@@ -1,0 +1,19 @@
+#!/bin/bash
+
+cd tests
+../bash run-all > test_result
+
+if ! [ -e bashtest ]; then
+	/bin/bash run-all > bashtest
+fi
+
+echo
+echo
+echo "test finished"
+echo "diff out put is berow"
+echo
+echo
+
+diff bashtest test_result
+
+cd ..

@@ -2901,326 +2901,374 @@ job_exit_signal (job)
    return the termination state.  Returns 127 if PID is not found in
    the jobs table.  Returns -1 if waitchld() returns -1, indicating
    that there are no unwaited-for child processes. */
-int
-wait_for (pid, flags)
+int wait_for (pid, flags)
      pid_t pid;
      int flags;
 {
-  int job, termination_state, r;
-  WAIT s;
-  register PROCESS *child;
-  sigset_t set, oset;
+	int job, termination_state, r;
+	WAIT s;
+	register PROCESS *child;
+	sigset_t set, oset;
 
-  /* In the case that this code is interrupted, and we longjmp () out of it,
-     we are relying on the code in throw_to_top_level () to restore the
-     top-level signal mask. */
-  child = 0;
-  BLOCK_CHILD (set, oset);
+	/* In the case that this code is interrupted, and we longjmp () out of it,
+	we are relying on the code in throw_to_top_level () to restore the
+	top-level signal mask. */
 
-  /* Ignore interrupts while waiting for a job run without job control
-     to finish.  We don't want the shell to exit if an interrupt is
-     received, only if one of the jobs run is killed via SIGINT.  If
-     job control is not set, the job will be run in the same pgrp as
-     the shell, and the shell will see any signals the job gets.  In
-     fact, we want this set every time the waiting shell and the waited-
-     for process are in the same process group, including command
-     substitution. */
+	child = 0;
+	BLOCK_CHILD (set, oset);
 
-  /* This is possibly a race condition -- should it go in stop_pipeline? */
-  wait_sigint_received = child_caught_sigint = 0;
-  if (job_control == 0 || (subshell_environment&SUBSHELL_COMSUB))
-    {
-      SigHandler *temp_sigint_handler;
+	/* Ignore interrupts while waiting for a job run without job control
+	to finish.  We don't want the shell to exit if an interrupt is
+	received, only if one of the jobs run is killed via SIGINT.  If
+	job control is not set, the job will be run in the same pgrp as
+	the shell, and the shell will see any signals the job gets.  In
+	fact, we want this set every time the waiting shell and the waited-
+	for process are in the same process group, including command
+	substitution. */
 
-      temp_sigint_handler = set_signal_handler (SIGINT, wait_sigint_handler);
-      if (temp_sigint_handler == wait_sigint_handler)
-	{
+	/* This is possibly a race condition -- should it go in stop_pipeline? */
+
+	wait_sigint_received = child_caught_sigint = 0;
+
+	if (job_control == 0 || (subshell_environment&SUBSHELL_COMSUB)) {
+		SigHandler *temp_sigint_handler;
+		temp_sigint_handler = set_signal_handler (SIGINT, wait_sigint_handler);
+
+		if (temp_sigint_handler == wait_sigint_handler) {
+		
 #if defined (DEBUG)
-	  internal_warning ("wait_for: recursively setting old_sigint_handler to wait_sigint_handler: running_trap = %d", running_trap);
+			internal_warning ("wait_for: recursively setting old_sigint_handler to 
+					           wait_sigint_handler: running_trap = %d", running_trap);
 #endif
+		}
+		else
+			old_sigint_handler = temp_sigint_handler;
+
+		waiting_for_child = 0;
+
+		if (old_sigint_handler == SIG_IGN)
+			set_signal_handler (SIGINT, old_sigint_handler);
 	}
-      else
-	old_sigint_handler = temp_sigint_handler;
-      waiting_for_child = 0;
-      if (old_sigint_handler == SIG_IGN)
-	set_signal_handler (SIGINT, old_sigint_handler);
-    }
 
-  termination_state = last_command_exit_value;
+	termination_state = last_command_exit_value;
 
-  if (interactive && job_control == 0)
-    QUIT;
-  /* Check for terminating signals and exit the shell if we receive one */
-  CHECK_TERMSIG;
+	if (interactive && job_control == 0)
+		QUIT;
 
-  /* Check for a trapped signal interrupting the wait builtin and jump out */
-  CHECK_WAIT_INTR;
+	/* Check for terminating signals and exit the shell if we receive one */
+	CHECK_TERMSIG;
 
-  /* If we say wait_for (), then we have a record of this child somewhere.
-     If it and none of its peers are running, don't call waitchld(). */
+	/* Check for a trapped signal interrupting the wait builtin and jump out */
+	CHECK_WAIT_INTR;
 
-  job = NO_JOB;
-  do
-    {
-      if (pid != ANY_PID)
-	FIND_CHILD (pid, child);
+	/* If we say wait_for (), then we have a record of this child somewhere.
+	If it and none of its peers are running, don't call waitchld(). */
 
-      /* If this child is part of a job, then we are really waiting for the
-	 job to finish.  Otherwise, we are waiting for the child to finish.
-	 We check for JDEAD in case the job state has been set by waitchld
-	 after receipt of a SIGCHLD. */
-      if (job == NO_JOB && pid != ANY_PID)	/* XXX -- && pid != ANY_PID ? */
-	job = find_job (pid, 0, NULL);
+	job = NO_JOB;
 
-      /* waitchld() takes care of setting the state of the job.  If the job
-	 has already exited before this is called, sigchld_handler will have
-	 called waitchld and the state will be set to JDEAD. */
+	do {
 
-      if (pid == ANY_PID || PRUNNING(child) || (job != NO_JOB && RUNNING (job)))
-	{
-	  int old_waiting;
+		if (pid != ANY_PID)
+			FIND_CHILD (pid, child);
 
-	  queue_sigchld = 1;
-	  old_waiting = waiting_for_child;
-	  waiting_for_child = 1;
-	  /* XXX - probably not strictly necessary but we want to catch
-	     everything that happened before we switch the behavior of
-	     trap_handler to longjmp on a trapped signal (waiting_for_child) */
-	  CHECK_WAIT_INTR;
-	  r = waitchld (pid, 1);	/* XXX */
-	  waiting_for_child = old_waiting;
+		/* If this child is part of a job, then we are really waiting for the
+		job to finish.  Otherwise, we are waiting for the child to finish.
+		We check for JDEAD in case the job state has been set by waitchld
+		after receipt of a SIGCHLD. */
+
+		if (job == NO_JOB && pid != ANY_PID)	/* XXX -- && pid != ANY_PID ? */
+			job = find_job (pid, 0, NULL);
+
+		/* waitchld() takes care of setting the state of the job.  If the job
+		has already exited before this is called, sigchld_handler will have
+		called waitchld and the state will be set to JDEAD. */
+
+
+		if (pid == ANY_PID || PRUNNING(child) || (job != NO_JOB && RUNNING (job))) {
+			int old_waiting;
+
+			queue_sigchld = 1;
+			old_waiting = waiting_for_child;
+			waiting_for_child = 1;
+
+			/* XXX - probably not strictly necessary but we want to catch
+			everything that happened before we switch the behavior of
+			trap_handler to longjmp on a trapped signal (waiting_for_child) */
+
+			CHECK_WAIT_INTR;
+			r = waitchld (pid, 1);	/* XXX */
+			waiting_for_child = old_waiting;
+
 #if 0
-itrace("wait_for: blocking wait for %d returns %d child = %p", (int)pid, r, child);
+			itrace("wait_for: blocking wait for %d returns %d child = %p", (int)pid, r, child);
 #endif
-	  queue_sigchld = 0;
-	  if (r == -1 && errno == ECHILD && this_shell_builtin == wait_builtin)
-	    {
-	      termination_state = -1;
-	      /* XXX - restore sigint handler here */
-	      restore_sigint_handler ();
-	      goto wait_for_return;
-	    }
+			queue_sigchld = 0;
 
-	  /* If child is marked as running, but waitpid() returns -1/ECHILD,
-	     there is something wrong.  Somewhere, wait should have returned
-	     that child's pid.  Mark the child as not running and the job,
-	     if it exists, as JDEAD. */
-	  if (r == -1 && errno == ECHILD)
-	    {
-	      if (child)
-		{
-		  child->running = PS_DONE;
-		  WSTATUS (child->status) = 0;	/* XXX -- can't find true status */
+			if (r == -1 && errno == ECHILD && this_shell_builtin == wait_builtin) {
+				
+				termination_state = -1;
+				/* XXX - restore sigint handler here */
+				restore_sigint_handler ();
+				goto wait_for_return;
+
+			}
+
+			/* If child is marked as running, but waitpid() returns -1/ECHILD,
+			there is something wrong.  Somewhere, wait should have returned
+			that child's pid.  Mark the child as not running and the job,
+			if it exists, as JDEAD. */
+
+			if (r == -1 && errno == ECHILD) {
+
+				if (child) {
+					child->running = PS_DONE;
+					WSTATUS (child->status) = 0;	/* XXX -- can't find true status */
+				}
+
+				js.c_living = 0;		/* no living child processes */
+
+				if (job != NO_JOB) {
+					jobs[job]->state = JDEAD;
+					js.c_reaped++;
+					js.j_ndead++;
+				}
+
+				if (pid == ANY_PID) {
+					termination_state = -1;
+					break;
+				}
+			}
 		}
-	      js.c_living = 0;		/* no living child processes */
-	      if (job != NO_JOB)
-		{
-		  jobs[job]->state = JDEAD;
-		  js.c_reaped++;
-		  js.j_ndead++;
+
+		/* If the shell is interactive, and job control is disabled, see
+		if the foreground process has died due to SIGINT and jump out
+		of the wait loop if it has.  waitchld has already restored the
+		old SIGINT signal handler. */
+
+
+		if (interactive && job_control == 0)
+			QUIT;
+
+		/* Check for terminating signals and exit the shell if we receive one */
+		CHECK_TERMSIG;
+
+		/* Check for a trapped signal interrupting the wait builtin and jump out */
+		CHECK_WAIT_INTR;
+
+		if (pid == ANY_PID) {
+			/* XXX - could set child but we don't have a handle on what waitchld
+			reaps.  Leave termination_state alone. */
+			restore_sigint_handler ();
+			goto wait_for_return;
 		}
-	      if (pid == ANY_PID)
-		{
-		  termination_state = -1;
-		  break;
-		}
-	    }
-	}
-
-      /* If the shell is interactive, and job control is disabled, see
-	 if the foreground process has died due to SIGINT and jump out
-	 of the wait loop if it has.  waitchld has already restored the
-	 old SIGINT signal handler. */
-      if (interactive && job_control == 0)
-	QUIT;
-      /* Check for terminating signals and exit the shell if we receive one */
-      CHECK_TERMSIG;
-
-      /* Check for a trapped signal interrupting the wait builtin and jump out */
-      CHECK_WAIT_INTR;
-
-      if (pid == ANY_PID)
-	{
-	  /* XXX - could set child but we don't have a handle on what waitchld
-	    reaps.  Leave termination_state alone. */
-	  restore_sigint_handler ();
-	  goto wait_for_return;
-	}
     }
-  while (PRUNNING (child) || (job != NO_JOB && RUNNING (job)));
 
-  /* Restore the original SIGINT signal handler before we return. */
-  restore_sigint_handler ();
+	while (PRUNNING (child) || (job != NO_JOB && RUNNING (job)));
 
-  /* The exit state of the command is either the termination state of the
-     child, or the termination state of the job.  If a job, the status
-     of the last child in the pipeline is the significant one.  If the command
-     or job was terminated by a signal, note that value also. */
-  termination_state = (job != NO_JOB) ? job_exit_status (job)
+	/* Restore the original SIGINT signal handler before we return. */
+	restore_sigint_handler ();
+
+	/* The exit state of the command is either the termination state of the
+	child, or the termination state of the job.  If a job, the status
+	of the last child in the pipeline is the significant one.  If the command
+	or job was terminated by a signal, note that value also. */
+
+	termination_state = (job != NO_JOB) ? job_exit_status (job)
 				      : (child ? process_exit_status (child->status) : EXECUTION_SUCCESS);
-  last_command_exit_signal = (job != NO_JOB) ? job_exit_signal (job)
+
+	last_command_exit_signal = (job != NO_JOB) ? job_exit_signal (job)
 					     : (child ? process_exit_signal (child->status) : 0);
 
-  /* XXX */
-  if ((job != NO_JOB && JOBSTATE (job) == JSTOPPED) || (child && WIFSTOPPED (child->status)))
-    termination_state = 128 + WSTOPSIG (child->status);
 
-  if (job == NO_JOB || IS_JOBCONTROL (job))
-    {
-      /* XXX - under what circumstances is a job not present in the jobs
-	 table (job == NO_JOB)?
+	/* XXX */
+	if ((job != NO_JOB && JOBSTATE (job) == JSTOPPED) || (child && WIFSTOPPED (child->status)))
+		termination_state = 128 + WSTOPSIG (child->status);
+
+
+	if (job == NO_JOB || IS_JOBCONTROL (job)) {
+		/* XXX - under what circumstances is a job not present in the jobs
+		table (job == NO_JOB)?
+
 	 	1.  command substitution
 
-	 In the case of command substitution, at least, it's probably not
-	 the right thing to give the terminal to the shell's process group,
-	 even though there is code in subst.c:command_substitute to work
-	 around it.
+		In the case of command substitution, at least, it's probably not
+		the right thing to give the terminal to the shell's process group,
+		even though there is code in subst.c:command_substitute to work
+		around it.
 
-	 Things that don't:
+		Things that don't:
+
 		$PROMPT_COMMAND execution
+
 		process substitution
        */
+
 #if 0
-if (job == NO_JOB)
-  itrace("wait_for: job == NO_JOB, giving the terminal to shell_pgrp (%ld)", (long)shell_pgrp);
+		if (job == NO_JOB)
+			itrace("wait_for: job == NO_JOB, giving the terminal to shell_pgrp (%ld)", (long)shell_pgrp);
 #endif
-      /* Don't modify terminal pgrp if we are running in background or a
-	 subshell.  Make sure subst.c:command_substitute uses the same
-	 conditions to determine whether or not it should undo this and
-	 give the terminal to pipeline_pgrp. */
-      
-      if ((flags & JWAIT_NOTERM) == 0 && running_in_background == 0 &&
-	  (subshell_environment & (SUBSHELL_ASYNC|SUBSHELL_PIPE)) == 0)
-	give_terminal_to (shell_pgrp, 0);
-    }
 
-  /* If the command did not exit cleanly, or the job is just
-     being stopped, then reset the tty state back to what it
-     was before this command.  Reset the tty state and notify
-     the user of the job termination only if the shell is
-     interactive.  Clean up any dead jobs in either case. */
-  if (job != NO_JOB)
-    {
-      if (interactive_shell && subshell_environment == 0)
-	{
-	  /* This used to use `child->status'.  That's wrong, however, for
-	     pipelines.  `child' is the first process in the pipeline.  It's
-	     likely that the process we want to check for abnormal termination
-	     or stopping is the last process in the pipeline, especially if
-	     it's long-lived and the first process is short-lived.  Since we
-	     know we have a job here, we can check all the processes in this
-	     job's pipeline and see if one of them stopped or terminated due
-	     to a signal.  We might want to change this later to just check
-	     the last process in the pipeline.  If no process exits due to a
-	     signal, S is left as the status of the last job in the pipeline. */
-	  s = job_signal_status (job);
+		/* Don't modify terminal pgrp if we are running in background or a
+		subshell.  Make sure subst.c:command_substitute uses the same
+		conditions to determine whether or not it should undo this and
+		give the terminal to pipeline_pgrp. */
 
-	  if (WIFSIGNALED (s) || WIFSTOPPED (s))
-	    {
-	      set_tty_state ();
+		if ((flags & JWAIT_NOTERM) == 0 && running_in_background == 0 &&
+				(subshell_environment & (SUBSHELL_ASYNC|SUBSHELL_PIPE)) == 0)
 
-	      /* If the current job was stopped or killed by a signal, and
-		 the user has requested it, get a possibly new window size */
-	      if (check_window_size && (job == js.j_current || IS_FOREGROUND (job)))
-		get_new_window_size (0, (int *)0, (int *)0);
-	    }
-	  else
+			give_terminal_to (shell_pgrp, 0);
+	}
+
+
+	/* If the command did not exit cleanly, or the job is just
+	being stopped, then reset the tty state back to what it
+	was before this command.  Reset the tty state and notify
+	the user of the job termination only if the shell is
+	interactive.  Clean up any dead jobs in either case. */
+
+
+	if (job != NO_JOB) {
+		if (interactive_shell && subshell_environment == 0) {
+
+			/* This used to use `child->status'.  That's wrong, however, for
+			pipelines.  `child' is the first process in the pipeline.  It's
+			likely that the process we want to check for abnormal termination
+			or stopping is the last process in the pipeline, especially if
+			it's long-lived and the first process is short-lived.  Since we
+			know we have a job here, we can check all the processes in this
+			job's pipeline and see if one of them stopped or terminated due
+			to a signal.  We might want to change this later to just check
+			the last process in the pipeline.  If no process exits due to a
+			signal, S is left as the status of the last job in the pipeline. */
+
+			s = job_signal_status (job);
+
+
+			if (WIFSIGNALED (s) || WIFSTOPPED (s)) {
+				set_tty_state ();
+
+				/* If the current job was stopped or killed by a signal, and
+				the user has requested it, get a possibly new window size */
+
+				if (check_window_size && (job == js.j_current || IS_FOREGROUND (job)))
+					get_new_window_size (0, (int *)0, (int *)0);
+			}
+
+			else
 #if defined (READLINE)
-	    /* We don't want to do this if we are running a process during
-	       programmable completion. */
-	    if (RL_ISSTATE (RL_STATE_COMPLETING) == 0)
+			/* We don't want to do this if we are running a process during
+			programmable completion. */
+				if (RL_ISSTATE (RL_STATE_COMPLETING) == 0)
 #endif
-	    get_tty_state ();
+				get_tty_state ();
 
-	  /* If job control is enabled, the job was started with job
-	     control, the job was the foreground job, and it was killed
-	     by SIGINT, then print a newline to compensate for the kernel
-	     printing the ^C without a trailing newline. */
-	  if (job_control && IS_JOBCONTROL (job) && IS_FOREGROUND (job) &&
-		WIFSIGNALED (s) && WTERMSIG (s) == SIGINT)
-	    {
-	      /* If SIGINT is not trapped and the shell is in a for, while,
-		 or until loop, act as if the shell received SIGINT as
-		 well, so the loop can be broken.  This doesn't call the
-		 SIGINT signal handler; maybe it should. */
-	      if (signal_is_trapped (SIGINT) == 0 && (loop_level || (shell_compatibility_level > 32 && executing_list)))
-		ADDINTERRUPT;
-	      /* Call any SIGINT trap handler if the shell is running a loop, so
-		 the loop can be broken.  This seems more useful and matches the
-		 behavior when the shell is running a builtin command in a loop
-		 when it is interrupted.  Change ADDINTERRUPT to
-		 trap_handler (SIGINT) to run the trap without interrupting the
-		 loop. */
-	      else if (signal_is_trapped (SIGINT) && loop_level)
-		ADDINTERRUPT;
-	      /* If an interactive shell with job control enabled is sourcing
-		 a file, allow the interrupt to terminate the file sourcing. */
-	      else if (interactive_shell && signal_is_trapped (SIGINT) == 0 && sourcelevel)
-		ADDINTERRUPT;
-	      else
-		{
-		  putchar ('\n');
-		  fflush (stdout);
+			/* If job control is enabled, the job was started with job
+			control, the job was the foreground job, and it was killed
+			by SIGINT, then print a newline to compensate for the kernel
+			printing the ^C without a trailing newline. */
+
+			if (job_control && IS_JOBCONTROL (job) && IS_FOREGROUND (job) &&
+				WIFSIGNALED (s) && WTERMSIG (s) == SIGINT) {
+	    
+				/* If SIGINT is not trapped and the shell is in a for, while,
+				or until loop, act as if the shell received SIGINT as
+				well, so the loop can be broken.  This doesn't call the
+				SIGINT signal handler; maybe it should. */
+
+				if (signal_is_trapped (SIGINT) == 0 && 
+					(loop_level || (shell_compatibility_level > 32 && 
+					executing_list)))
+
+					ADDINTERRUPT;
+
+				/* Call any SIGINT trap handler if the shell is running a loop, so
+				the loop can be broken.  This seems more useful and matches the
+				behavior when the shell is running a builtin command in a loop
+				when it is interrupted.  Change ADDINTERRUPT to
+				trap_handler (SIGINT) to run the trap without interrupting the
+				loop. */
+
+				else if (signal_is_trapped (SIGINT) && loop_level)
+					ADDINTERRUPT;
+
+				/* If an interactive shell with job control enabled is sourcing
+				a file, allow the interrupt to terminate the file sourcing. */
+
+				else if (interactive_shell && signal_is_trapped (SIGINT) == 0 && sourcelevel)
+					ADDINTERRUPT;
+
+				else {
+					putchar ('\n');
+					fflush (stdout);
+				}
+			}
 		}
-	    }
+
+		else if ((subshell_environment & (SUBSHELL_COMSUB|SUBSHELL_PIPE)) && wait_sigint_received) {
+			/* If waiting for a job in a subshell started to do command
+			substitution or to run a pipeline element that consists of
+			something like a while loop or a for loop, simulate getting
+			and being killed by the SIGINT to pass the status back to our
+			parent. */
+
+			if (child_caught_sigint == 0 && signal_is_trapped (SIGINT) == 0) {
+				UNBLOCK_CHILD (oset);
+				old_sigint_handler = set_signal_handler (SIGINT, SIG_DFL);
+
+				if (old_sigint_handler == SIG_IGN)
+					restore_sigint_handler ();
+				else
+					kill (getpid (), SIGINT);
+			}
+		}
+
+		else if (interactive_shell == 0 && subshell_environment == 0 && IS_FOREGROUND (job)) {
+			s = job_signal_status (job);
+
+			/* If we are non-interactive, but job control is enabled, and the job
+			died due to SIGINT, pretend we got the SIGINT */
+
+			if (job_control && 
+				IS_JOBCONTROL (job) && 
+				WIFSIGNALED (s) && 
+				WTERMSIG (s) == SIGINT) {
+
+				ADDINTERRUPT;	/* For now */
+			}
+
+			if (check_window_size)
+				get_new_window_size (0, (int *)0, (int *)0);
+		}
+
+
+		/* Moved here from set_job_status_and_cleanup, which is in the SIGCHLD
+		signal handler path */
+
+		if (DEADJOB (job) && IS_FOREGROUND (job) /*&& subshell_environment == 0*/)
+			setjstatus (job);
+
+		/* If this job is dead, notify the user of the status.  If the shell
+		is interactive, this will display a message on the terminal.  If
+		the shell is not interactive, make sure we turn on the notify bit
+		so we don't get an unwanted message about the job's termination,
+		and so delete_job really clears the slot in the jobs table. */
+
+		notify_and_cleanup ();
 	}
-      else if ((subshell_environment & (SUBSHELL_COMSUB|SUBSHELL_PIPE)) && wait_sigint_received)
-	{
-	  /* If waiting for a job in a subshell started to do command
-	     substitution or to run a pipeline element that consists of
-	     something like a while loop or a for loop, simulate getting
-	     and being killed by the SIGINT to pass the status back to our
-	     parent. */
-	  if (child_caught_sigint == 0 && signal_is_trapped (SIGINT) == 0)
-	    {
-	      UNBLOCK_CHILD (oset);
-	      old_sigint_handler = set_signal_handler (SIGINT, SIG_DFL);
-	      if (old_sigint_handler == SIG_IGN)
-		restore_sigint_handler ();
-	      else
-		kill (getpid (), SIGINT);
-	    }
-	}
-      else if (interactive_shell == 0 && subshell_environment == 0 && IS_FOREGROUND (job))
-	{
-	  s = job_signal_status (job);
-
-	  /* If we are non-interactive, but job control is enabled, and the job
-	     died due to SIGINT, pretend we got the SIGINT */
-	  if (job_control && IS_JOBCONTROL (job) && WIFSIGNALED (s) && WTERMSIG (s) == SIGINT)
-	    {
-	      ADDINTERRUPT;	/* For now */
-	    }
-
-	  if (check_window_size)
-	    get_new_window_size (0, (int *)0, (int *)0);
-	}
-
-      /* Moved here from set_job_status_and_cleanup, which is in the SIGCHLD
-	 signal handler path */
-      if (DEADJOB (job) && IS_FOREGROUND (job) /*&& subshell_environment == 0*/)
-	setjstatus (job);
-
-      /* If this job is dead, notify the user of the status.  If the shell
-	 is interactive, this will display a message on the terminal.  If
-	 the shell is not interactive, make sure we turn on the notify bit
-	 so we don't get an unwanted message about the job's termination,
-	 and so delete_job really clears the slot in the jobs table. */
-      notify_and_cleanup ();
-    }
 
 wait_for_return:
 
-  UNBLOCK_CHILD (oset);
-
-  return (termination_state);
+	UNBLOCK_CHILD (oset);
+	return (termination_state);
 }
+
 
 /* Wait for the last process in the pipeline for JOB.  Returns whatever
    wait_for returns: the last process's termination state or -1 if there
    are no unwaited-for child processes or an error occurs.  If FLAGS
    includes JWAIT_FORCE, we wait for the job to terminate, no just change
    state */
+
 int
 wait_for_job (job, flags, ps)
      int job, flags;

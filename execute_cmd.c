@@ -561,9 +561,10 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	int pipe_in, pipe_out;
 	struct fd_bitmap *fds_to_close;
 {
-	int exec_result, user_subshell, invert, ignore_return, was_error_trap, fork_flags;
+	int exec_result, user_subshell, invert, ignore_return, was_error_trap;
 	REDIRECT *my_undo_list, *exec_undo_list;
-	char *tcmd;
+
+
 	volatile int save_line_number;
 #if defined (PROCESS_SUBSTITUTION)
 	volatile int ofifo, nfifo, osize, saved_fifo;
@@ -633,6 +634,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 		pid_t paren_pid;
 		char *p;
+		int fork_flags;
 
 		/* Fork a subshell, turn off the subshell bit, turn off job
 		control and call execute_command () on the command again. */
@@ -644,10 +646,9 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		}
 
 		/* Otherwise we defer setting line_number */
-		tcmd = make_command_string (command);
+		p = savestring(make_command_string (command));
 		fork_flags = asynchronous ? FORK_ASYNC : 0;
-		paren_pid = make_child (p = savestring (tcmd), fork_flags);
-
+		paren_pid = make_child (p, fork_flags);
 
 		if (user_subshell && 
 			signal_is_trapped (ERROR_TRAP) && 
@@ -658,6 +659,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			the_printed_command_except_trap = savestring (the_printed_command);
 		}
 
+		/*executed by child*/
 		if (paren_pid == 0) {
 			int status;
 
@@ -665,6 +667,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			/* child doesn't use pointer */
 			FREE (p);		
 #endif
+
 			/* We want to run the exit trap for forced {} subshells, and we
 			want to note this before execute_in_subshell modifies the
 			COMMAND struct.  Need to keep in mind that execute_in_subshell

@@ -382,7 +382,6 @@ executing_line_number ()
 int execute_command (command)
      COMMAND *command;
 {
-
 	struct fd_bitmap *bitmap;
 	int result;
 
@@ -586,14 +585,15 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 	currently_executing_command = command;
 
+
 	/* If we're inverting the return value and `set -e' has been executed,
 	we don't want a failing command to inadvertently cause the shell
 	to exit. */
 
 	invert = (command->flags & CMD_INVERT_RETURN) != 0;
+
 	if (exit_immediately_on_error && invert)	/* XXX */
 		command->flags |= CMD_IGNORE_RETURN;	/* XXX */
-
 
 	exec_result = EXECUTION_SUCCESS;
 
@@ -601,11 +601,9 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	a shell control-structure, and it has a pipe, then we do the command
 	in a subshell. */
 
-
 	if (command->type == cm_subshell && (command->flags & CMD_NO_FORK)) {
 		return (execute_in_subshell (command, asynchronous, pipe_in, pipe_out, fds_to_close));
 	}
-
 
 #if defined (COPROCESS_SUPPORT)
 	if (command->type == cm_coproc) {
@@ -616,7 +614,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 	user_subshell = command->type == cm_subshell || 
 					((command->flags & CMD_WANT_SUBSHELL) != 0);
-
 
 #if defined (TIME_BEFORE_SUBSHELL)
 	if ((command->flags & CMD_TIME_PIPELINE) && 
@@ -636,7 +633,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 		pid_t paren_pid;
 		char *p;
-		int status;
 
 		/* Fork a subshell, turn off the subshell bit, turn off job
 		control and call execute_command () on the command again. */
@@ -662,8 +658,9 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			the_printed_command_except_trap = savestring (the_printed_command);
 		}
 
-
 		if (paren_pid == 0) {
+			int status;
+
 #if defined (JOB_CONTROL)
 			/* child doesn't use pointer */
 			FREE (p);		
@@ -4373,11 +4370,9 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			line_number = 1;
     }
 
-
 	/* Remember what this command line looks like at invocation. */
 	command_string_index = 0;
 	print_simple_command (simple_command);
-
 
 #if 0
 	if (signal_in_progress (DEBUG_TRAP) == 0 && 
@@ -4404,7 +4399,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 
 	if (debugging_mode && result != EXECUTION_SUCCESS)
 		return (EXECUTION_SUCCESS);
-
 #endif
 
 	cmdflags = simple_command->flags;
@@ -4428,18 +4422,19 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	/* Something like `%2 &' should restart job 2 in the background, not cause
 	the shell to fork here. */
 
-	if (dofork && pipe_in == NO_PIPE && pipe_out == NO_PIPE &&
-		simple_command->words && simple_command->words->word &&
+	if (dofork && 
+		pipe_in == NO_PIPE && 
+		pipe_out == NO_PIPE &&
+		simple_command->words && 
+		simple_command->words->word &&
 		simple_command->words->word->word &&
 		(simple_command->words->word->word[0] == '%')) {
 
 		dofork = 0;
-
 	}
 
 
 	if (dofork) {
-
 		char *p;
 
 		/* Do this now, because execute_disk_command will do it anyway in the
@@ -4491,9 +4486,9 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 #if defined (JOB_CONTROL)
 			FREE (p);			/* child doesn't use pointer */
 #endif
+
 		}
 		else {
-
 			/* Don't let simple commands that aren't the last command in a
 			pipeline change $? for the rest of the pipeline (or at all). */
 
@@ -4527,7 +4522,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 
 		current_fds_to_close = (struct fd_bitmap *)NULL;
 	}
-
 	else
 		words = copy_word_list (simple_command->words);
 
@@ -4583,6 +4577,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		if (builtin == 0)
 			func = find_function (words->word->word);
 	}
+
 
 	/* In POSIX mode, assignment errors in the temporary environment cause a
 	non-interactive shell to exit. */

@@ -627,6 +627,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	}
 #endif
 
+
 	if (command->type == cm_subshell ||
 		(command->flags & (CMD_WANT_SUBSHELL|CMD_FORCE_SUBSHELL)) ||
 		(shell_control_structure (command->type) &&
@@ -648,6 +649,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		/* Otherwise we defer setting line_number */
 		p = savestring(make_command_string (command));
 		fork_flags = asynchronous ? FORK_ASYNC : 0;
+
 		paren_pid = make_child (p, fork_flags);
 
 		if (user_subshell && 
@@ -662,6 +664,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		/*executed by child*/
 		if (paren_pid == 0) {
 			int status;
+
 
 #if defined (JOB_CONTROL)
 			/* child doesn't use pointer */
@@ -716,19 +719,21 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			if (pipe_out != NO_PIPE)
 			    return (EXECUTION_SUCCESS);
 
-			stop_pipeline (asynchronous, (COMMAND *)NULL);
 
+			stop_pipeline (asynchronous, (COMMAND *)NULL);
 			line_number = save_line_number;
 
 			/*synchronus*/
 			if (asynchronous == 0) {
-				was_error_trap = signal_is_trapped (ERROR_TRAP) && 
-			     		 		 signal_is_ignored (ERROR_TRAP) == 0;
+
+				/*wait_for() maybe doesn't modify COMMAND structure.*/
+				exec_result = wait_for (paren_pid, 0);
 
 				invert = (command->flags & CMD_INVERT_RETURN) != 0;
 				ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
 
-				exec_result = wait_for (paren_pid, 0);
+				was_error_trap = signal_is_trapped (ERROR_TRAP) && 
+			     		 		 signal_is_ignored (ERROR_TRAP) == 0;
 
 				/* If we have to, invert the return value. */
 				if (invert)
@@ -874,7 +879,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	QUIT;
 
  	switch (command->type) {
-	case cm_simple: {
+	case cm_simple: 
 		save_line_number = line_number;
 		/* We can't rely on variables retaining their values across a
 		call to execute_simple_command if a longjmp occurs as the
@@ -942,53 +947,52 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 					pipelines) to be waited for twice. */
 					exec_result = wait_for (last_made_pid, 0);
 		}
-	}
 
-	/* 2009/02/13 -- pipeline failure is processed elsewhere.  This handles
-	 only the failure of a simple command. We don't want to run the error
-	 trap if the command run by the `command' builtin fails; we want to
-	 defer that until the command builtin itself returns failure. */
+		/* 2009/02/13 -- pipeline failure is processed elsewhere.  This handles
+		 only the failure of a simple command. We don't want to run the error
+		 trap if the command run by the `command' builtin fails; we want to
+		 defer that until the command builtin itself returns failure. */
 
-	/* 2020/07/14 -- this changes with how the command builtin is handled */ 
-	if (was_error_trap && 
-		ignore_return == 0 && 
-		invert == 0 &&
-		pipe_in == NO_PIPE && 
-		pipe_out == NO_PIPE &&
-		(command->value.Simple->flags & CMD_COMMAND_BUILTIN) == 0 &&
-	    exec_result != EXECUTION_SUCCESS) {
+		/* 2020/07/14 -- this changes with how the command builtin is handled */ 
+		if (was_error_trap && 
+			ignore_return == 0 && 
+			invert == 0 &&
+			pipe_in == NO_PIPE && 
+			pipe_out == NO_PIPE &&
+			(command->value.Simple->flags & CMD_COMMAND_BUILTIN) == 0 &&
+			exec_result != EXECUTION_SUCCESS) {
 
-		last_command_exit_value = exec_result;
-		line_number = line_number_for_err_trap;
-		run_error_trap ();
-		line_number = save_line_number;
-	}
-
-	if (ignore_return == 0 && 
-		invert == 0 &&
-		((posixly_correct && 
-		  interactive == 0 && 
-		  special_builtin_failed) ||
-		(exit_immediately_on_error && 
-		 pipe_in == NO_PIPE && 
-		 pipe_out == NO_PIPE && 
-		 exec_result != EXECUTION_SUCCESS))) {
-
-		last_command_exit_value = exec_result;
-		run_pending_traps ();
-
-		/* Undo redirections before running exit trap on the way out of
-		set -e. Report by Mark Farrell 5/19/2014 */
-
-		if (exit_immediately_on_error && 
-			signal_is_trapped (0) &&
-			unwind_protect_tag_on_stack ("saved-redirects")) {
-
-			run_unwind_frame ("saved-redirects");
+			last_command_exit_value = exec_result;
+			line_number = line_number_for_err_trap;
+			run_error_trap ();
+			line_number = save_line_number;
 		}
 
-		jump_to_top_level (ERREXIT);
-	}
+		if (ignore_return == 0 && 
+			invert == 0 &&
+			((posixly_correct && 
+			  interactive == 0 && 
+			  special_builtin_failed) ||
+			(exit_immediately_on_error && 
+			 pipe_in == NO_PIPE && 
+			 pipe_out == NO_PIPE && 
+			 exec_result != EXECUTION_SUCCESS))) {
+
+			last_command_exit_value = exec_result;
+			run_pending_traps ();
+
+			/* Undo redirections before running exit trap on the way out of
+			set -e. Report by Mark Farrell 5/19/2014 */
+
+			if (exit_immediately_on_error && 
+				signal_is_trapped (0) &&
+				unwind_protect_tag_on_stack ("saved-redirects")) {
+
+				run_unwind_frame ("saved-redirects");
+			}
+			jump_to_top_level (ERREXIT);
+		}
+
 		break;
 
 	case cm_for:

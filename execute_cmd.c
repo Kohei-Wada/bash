@@ -542,6 +542,12 @@ async_redirect_stdin ()
 
 #define DESCRIBE_PID(pid) do { if (interactive) describe_pid (pid); } while (0)
 
+static int execute_subshell_command()
+{
+	return 0;
+}
+
+
 /* Execute the command passed in COMMAND, perhaps doing it asynchronously.
    COMMAND is exactly what read_command () places into GLOBAL_COMMAND.
    ASYNCHRONOUS, if non-zero, says to do this command in the background.
@@ -627,7 +633,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	}
 #endif
 
-
 	if (command->type == cm_subshell ||
 		(command->flags & (CMD_WANT_SUBSHELL|CMD_FORCE_SUBSHELL)) ||
 		(shell_control_structure (command->type) &&
@@ -636,6 +641,11 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		pid_t paren_pid;
 		char *p;
 		int fork_flags;
+		int user_subshell_tmp;
+		int ignore_return_tmp;
+
+		user_subshell_tmp = command->type == cm_subshell || 
+					((command->flags & CMD_WANT_SUBSHELL) != 0);
 
 		/* Fork a subshell, turn off the subshell bit, turn off job
 		control and call execute_command () on the command again. */
@@ -652,7 +662,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 		paren_pid = make_child (p, fork_flags);
 
-		if (user_subshell && 
+		if (user_subshell_tmp && 
 			signal_is_trapped (ERROR_TRAP) && 
 			signal_in_progress (DEBUG_TRAP) == 0 && 
 			running_trap == 0) {
@@ -676,14 +686,14 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			runs the exit trap for () subshells itself. */
 
 			/* This handles { command; } & */
-			status = user_subshell == 0 && 
+			status = user_subshell_tmp == 0 && 
 				command->type == cm_group && 
 				pipe_in == NO_PIPE && 
 				pipe_out == NO_PIPE && 
 				asynchronous;
 
 			/* run exit trap for : | { ...; } and { ...; } | : */
-			status += user_subshell == 0 && 
+			status += user_subshell_tmp == 0 && 
 				command->type == cm_group && 
 				(pipe_in != NO_PIPE || pipe_out != NO_PIPE) && 
 				asynchronous == 0;
@@ -724,12 +734,13 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 			/*synchronus*/
 			if (asynchronous == 0) {
+				int invert_tmp;
 
 				/*wait_for() maybe doesn't modify COMMAND structure.*/
 				exec_result = wait_for (paren_pid, 0);
 
-				int invert_tmp = (command->flags & CMD_INVERT_RETURN) != 0;
-				ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
+				invert_tmp = (command->flags & CMD_INVERT_RETURN) != 0;
+				ignore_return_tmp = (command->flags & CMD_IGNORE_RETURN) != 0;
 
 				was_error_trap = signal_is_trapped (ERROR_TRAP) && 
 			     		 		 signal_is_ignored (ERROR_TRAP) == 0;
@@ -741,8 +752,8 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 				last_command_exit_value = exec_result;
 
-				if (user_subshell && 
-					ignore_return == 0 && 
+				if (user_subshell_tmp && 
+					ignore_return_tmp == 0 && 
 					invert_tmp == 0 && 
 					exec_result != EXECUTION_SUCCESS) {
 

@@ -665,7 +665,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		if (paren_pid == 0) {
 			int status;
 
-
 #if defined (JOB_CONTROL)
 			/* child doesn't use pointer */
 			FREE (p);		
@@ -702,6 +701,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 		/*executed by parent*/
 		else {
+
 			close_pipes (pipe_in, pipe_out);
 
 #if defined (PROCESS_SUBSTITUTION) && defined (HAVE_DEV_FD)
@@ -719,7 +719,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			if (pipe_out != NO_PIPE)
 			    return (EXECUTION_SUCCESS);
 
-
 			stop_pipeline (asynchronous, (COMMAND *)NULL);
 			line_number = save_line_number;
 
@@ -729,14 +728,14 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 				/*wait_for() maybe doesn't modify COMMAND structure.*/
 				exec_result = wait_for (paren_pid, 0);
 
-				invert = (command->flags & CMD_INVERT_RETURN) != 0;
+				int invert_tmp = (command->flags & CMD_INVERT_RETURN) != 0;
 				ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
 
 				was_error_trap = signal_is_trapped (ERROR_TRAP) && 
 			     		 		 signal_is_ignored (ERROR_TRAP) == 0;
 
 				/* If we have to, invert the return value. */
-				if (invert)
+				if (invert_tmp)
 					exec_result = ((exec_result == EXECUTION_SUCCESS) ? 
 							EXECUTION_FAILURE : EXECUTION_SUCCESS);
 
@@ -744,7 +743,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 				if (user_subshell && 
 					ignore_return == 0 && 
-					invert == 0 && 
+					invert_tmp == 0 && 
 					exec_result != EXECUTION_SUCCESS) {
 
 					if (was_error_trap) {
@@ -773,6 +772,8 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			}
 		}
 	}
+
+
 
 #if defined (COMMAND_TIMING)
 	if (command->flags & CMD_TIME_PIPELINE) {
@@ -995,12 +996,14 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 		break;
 
+
 	case cm_for:
 		if (ignore_return)
 			command->value.For->flags |= CMD_IGNORE_RETURN;
 
 		exec_result = execute_for_command (command->value.For);
 		break;
+
 
 #if defined (ARITH_FOR_COMMAND)
 	case cm_arith_for:
@@ -1011,6 +1014,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		break;
 #endif
 
+
 #if defined (SELECT_COMMAND)
 	case cm_select:
 		if (ignore_return)
@@ -1018,6 +1022,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		exec_result = execute_select_command (command->value.Select);
 		break;
 #endif
+
 
 	case cm_case:
 		if (ignore_return)
@@ -1045,29 +1050,29 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 	case cm_group:
 
-	/* This code can be executed from either of two paths: an explicit
-	'{}' command, or via a function call.  If we are executed via a
-	function call, we have already taken care of the function being
-	executed in the background (down there in execute_simple_command ()),
-	and this command should *not* be marked as asynchronous.  If we
-	are executing a regular '{}' group command, and asynchronous == 1,
-	we must want to execute the whole command in the background, so we
-	need a subshell, and we want the stuff executed in that subshell
-	(this group command) to be executed in the foreground of that
-	subshell (i.e. there will not be *another* subshell forked).
+		/* This code can be executed from either of two paths: an explicit
+		'{}' command, or via a function call.  If we are executed via a
+		function call, we have already taken care of the function being
+		executed in the background (down there in execute_simple_command ()),
+		and this command should *not* be marked as asynchronous.  If we
+		are executing a regular '{}' group command, and asynchronous == 1,
+		we must want to execute the whole command in the background, so we
+		need a subshell, and we want the stuff executed in that subshell
+		(this group command) to be executed in the foreground of that
+		subshell (i.e. there will not be *another* subshell forked).
 
-	What we do is to force a subshell if asynchronous, and then call
-	execute_command_internal again with asynchronous still set to 1,
-	but with the original group command, so the printed command will
-	look right.
+		What we do is to force a subshell if asynchronous, and then call
+		execute_command_internal again with asynchronous still set to 1,
+		but with the original group command, so the printed command will
+		look right.
 
-	The code above that handles forking off subshells will note that
-	both subshell and async are on, and turn off async in the child
-	after forking the subshell (but leave async set in the parent, so
-	the normal call to describe_pid is made).  This turning off
-	async is *crucial*; if it is not done, this will fall into an
-	infinite loop of executions through this spot in subshell after
-	subshell until the process limit is exhausted. */
+		The code above that handles forking off subshells will note that
+		both subshell and async are on, and turn off async in the child
+		after forking the subshell (but leave async set in the parent, so
+		the normal call to describe_pid is made).  This turning off
+		async is *crucial*; if it is not done, this will fall into an
+		infinite loop of executions through this spot in subshell after
+		subshell until the process limit is exhausted. */
 
 		if (asynchronous) {
 			command->flags |= CMD_FORCE_SUBSHELL;
@@ -1090,18 +1095,23 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 		break;
 
+
 #if defined (DPAREN_ARITHMETIC)
 	case cm_arith:
 #endif
+
 #if defined (COND_COMMAND)
 	case cm_cond:
 #endif
+
 	case cm_function_def:
 		was_error_trap = signal_is_trapped (ERROR_TRAP) && signal_is_ignored (ERROR_TRAP) == 0;
+
 #if defined (DPAREN_ARITHMETIC)
 		if (ignore_return && command->type == cm_arith)
 			command->value.Arith->flags |= CMD_IGNORE_RETURN;
 #endif
+
 #if defined (COND_COMMAND)
 		if (ignore_return && command->type == cm_cond)
 			command->value.Cond->flags |= CMD_IGNORE_RETURN;
@@ -1112,16 +1122,15 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 #if defined (DPAREN_ARITHMETIC)
 		if (command->type == cm_arith)
 			exec_result = execute_arith_command (command->value.Arith);
-
 		else
 #endif
 
 #if defined (COND_COMMAND)
 		if (command->type == cm_cond)
 			exec_result = execute_cond_command (command->value.Cond);
-
 		else
 #endif
+
 		if (command->type == cm_function_def)
 			exec_result = execute_intern_function (command->value.Function_def->name,
 				command->value.Function_def);
@@ -1183,6 +1192,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	if (invert)
 		exec_result = (exec_result == EXECUTION_SUCCESS) ? 
 			EXECUTION_FAILURE : EXECUTION_SUCCESS;
+
 
 #if defined (DPAREN_ARITHMETIC) || defined (COND_COMMAND)
 	/* This is where we set PIPESTATUS from the exit status of the appropriate

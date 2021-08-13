@@ -542,13 +542,160 @@ async_redirect_stdin ()
 
 #define DESCRIBE_PID(pid) do { if (interactive) describe_pid (pid); } while (0)
 
-static void execute_subshell_command (command, asynchronous, pipe_in, pipe_out, fds_to_close)
+static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, fds_to_close, save_line_number)
 	COMMAND *command;
 	int asynchronous;
 	int pipe_in, pipe_out;
 	struct fd_bitmap *fds_to_close;
+	int *save_line_number;
 {
 
+	pid_t paren_pid;
+	char *p;
+	int fork_flags;
+	int user_subshell_tmp;
+	int ignore_return_tmp;
+	int was_error_trap_tmp;
+	int exec_result;
+
+	user_subshell_tmp = command->type == cm_subshell || 
+				((command->flags & CMD_WANT_SUBSHELL) != 0);
+
+	/* Fork a subshell, turn off the subshell bit, turn off job
+	control and call execute_command () on the command again. */
+	*save_line_number = line_number;
+
+	if (command->type == cm_subshell) {
+		/* XXX - save value? */
+		line_number_for_err_trap = line_number = command->value.Subshell->line;	
+	}
+
+	/* Otherwise we defer setting line_number */
+	p = savestring(make_command_string (command));
+	fork_flags = asynchronous ? FORK_ASYNC : 0;
+
+	paren_pid = make_child (p, fork_flags);
+
+	if (user_subshell_tmp && 
+		signal_is_trapped (ERROR_TRAP) && 
+		signal_in_progress (DEBUG_TRAP) == 0 && 
+		running_trap == 0) {
+
+		FREE (the_printed_command_except_trap);
+		the_printed_command_except_trap = savestring (the_printed_command);
+	}
+
+	/*executed by child*/
+	if (paren_pid == 0) {
+		int status;
+
+#if defined (JOB_CONTROL)
+		/* child doesn't use pointer */
+		FREE (p);		
+#endif
+
+		/* We want to run the exit trap for forced {} subshells, and we
+		want to note this before execute_in_subshell modifies the
+		COMMAND struct.  Need to keep in mind that execute_in_subshell
+		runs the exit trap for () subshells itself. */
+
+		/* This handles { command; } & */
+		status = user_subshell_tmp == 0 && 
+			command->type == cm_group && 
+			pipe_in == NO_PIPE && 
+			pipe_out == NO_PIPE && 
+			asynchronous;
+
+		/* run exit trap for : | { ...; } and { ...; } | : */
+		status += user_subshell_tmp == 0 && 
+			command->type == cm_group && 
+			(pipe_in != NO_PIPE || pipe_out != NO_PIPE) && 
+			asynchronous == 0;
+
+		last_command_exit_value = 
+			execute_in_subshell (command, asynchronous, pipe_in, pipe_out, fds_to_close);
+
+		if (status)
+			subshell_exit (last_command_exit_value);
+		else
+			sh_exit (last_command_exit_value);
+
+		/* NOTREACHED */
+	} 
+
+	/*executed by parent*/
+	else {
+
+		close_pipes (pipe_in, pipe_out);
+
+#if defined (PROCESS_SUBSTITUTION) && defined (HAVE_DEV_FD)
+		/* wait until shell function completes */
+		if (variable_context == 0)
+			unlink_fifo_list ();
+#endif
+
+		/* If we are part of a pipeline, and not the end of the pipeline,
+		then we should simply return and let the last command in the
+		pipe be waited for.  If we are not in a pipeline, or are the
+		last command in the pipeline, then we wait for the subshell
+		and return its exit status as usual. */
+
+		if (pipe_out != NO_PIPE)
+			return (EXECUTION_SUCCESS);
+
+		stop_pipeline (asynchronous, (COMMAND *)NULL);
+		line_number = *save_line_number;
+
+		/*synchronus*/
+		if (asynchronous == 0) {
+			int invert_tmp;
+
+			/*wait_for() maybe doesn't modify COMMAND structure.*/
+			exec_result = wait_for (paren_pid, 0);
+
+			invert_tmp = (command->flags & CMD_INVERT_RETURN) != 0;
+			ignore_return_tmp = (command->flags & CMD_IGNORE_RETURN) != 0;
+
+			was_error_trap_tmp = signal_is_trapped (ERROR_TRAP) && 
+							 signal_is_ignored (ERROR_TRAP) == 0;
+
+			/* If we have to, invert the return value. */
+			if (invert_tmp)
+				exec_result = ((exec_result == EXECUTION_SUCCESS) ? 
+						EXECUTION_FAILURE : EXECUTION_SUCCESS);
+
+			last_command_exit_value = exec_result;
+
+			if (user_subshell_tmp && 
+				ignore_return_tmp == 0 && 
+				invert_tmp == 0 && 
+				exec_result != EXECUTION_SUCCESS) {
+
+				if (was_error_trap_tmp) {
+					*save_line_number = line_number;
+					line_number = line_number_for_err_trap;
+					run_error_trap ();
+				}
+
+				if (exit_immediately_on_error) {
+					run_pending_traps ();
+					jump_to_top_level (ERREXIT);
+				}
+			}
+
+			return (last_command_exit_value);
+		}
+
+		/*asynchronus*/
+		else {
+			DESCRIBE_PID (paren_pid);
+			run_pending_traps ();
+
+			/* Posix 2013 2.9.3.1: "the exit status of an asynchronous list shall be zero." */
+			last_command_exit_value = 0;
+			return (EXECUTION_SUCCESS);
+		}
+	}
 }
 
 
@@ -637,160 +784,13 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	}
 #endif
 
-
 	if (command->type == cm_subshell ||
 		(command->flags & (CMD_WANT_SUBSHELL|CMD_FORCE_SUBSHELL)) ||
 		(shell_control_structure (command->type) &&
 		(pipe_out != NO_PIPE || pipe_in != NO_PIPE || asynchronous))) {
 
-		pid_t paren_pid;
-		char *p;
-		int fork_flags;
-		int user_subshell_tmp;
-		int ignore_return_tmp;
-		int was_error_trap_tmp;
-
-
-		user_subshell_tmp = command->type == cm_subshell || 
-					((command->flags & CMD_WANT_SUBSHELL) != 0);
-
-		/* Fork a subshell, turn off the subshell bit, turn off job
-		control and call execute_command () on the command again. */
-		save_line_number = line_number;
-
-		if (command->type == cm_subshell) {
-			/* XXX - save value? */
-			line_number_for_err_trap = line_number = command->value.Subshell->line;	
-		}
-
-		/* Otherwise we defer setting line_number */
-		p = savestring(make_command_string (command));
-		fork_flags = asynchronous ? FORK_ASYNC : 0;
-
-		paren_pid = make_child (p, fork_flags);
-
-		if (user_subshell_tmp && 
-			signal_is_trapped (ERROR_TRAP) && 
-			signal_in_progress (DEBUG_TRAP) == 0 && 
-			running_trap == 0) {
-
-			FREE (the_printed_command_except_trap);
-			the_printed_command_except_trap = savestring (the_printed_command);
-		}
-
-		/*executed by child*/
-		if (paren_pid == 0) {
-			int status;
-
-#if defined (JOB_CONTROL)
-			/* child doesn't use pointer */
-			FREE (p);		
-#endif
-
-			/* We want to run the exit trap for forced {} subshells, and we
-			want to note this before execute_in_subshell modifies the
-			COMMAND struct.  Need to keep in mind that execute_in_subshell
-			runs the exit trap for () subshells itself. */
-
-			/* This handles { command; } & */
-			status = user_subshell_tmp == 0 && 
-				command->type == cm_group && 
-				pipe_in == NO_PIPE && 
-				pipe_out == NO_PIPE && 
-				asynchronous;
-
-			/* run exit trap for : | { ...; } and { ...; } | : */
-			status += user_subshell_tmp == 0 && 
-				command->type == cm_group && 
-				(pipe_in != NO_PIPE || pipe_out != NO_PIPE) && 
-				asynchronous == 0;
-
-			last_command_exit_value = 
-				execute_in_subshell (command, asynchronous, pipe_in, pipe_out, fds_to_close);
-
-			if (status)
-				subshell_exit (last_command_exit_value);
-			else
-				sh_exit (last_command_exit_value);
-
-			/* NOTREACHED */
-		} 
-
-		/*executed by parent*/
-		else {
-
-			close_pipes (pipe_in, pipe_out);
-
-#if defined (PROCESS_SUBSTITUTION) && defined (HAVE_DEV_FD)
-			/* wait until shell function completes */
-			if (variable_context == 0)
-				unlink_fifo_list ();
-#endif
-
-			/* If we are part of a pipeline, and not the end of the pipeline,
-			then we should simply return and let the last command in the
-			pipe be waited for.  If we are not in a pipeline, or are the
-			last command in the pipeline, then we wait for the subshell
-			and return its exit status as usual. */
-
-			if (pipe_out != NO_PIPE)
-			    return (EXECUTION_SUCCESS);
-
-			stop_pipeline (asynchronous, (COMMAND *)NULL);
-			line_number = save_line_number;
-
-			/*synchronus*/
-			if (asynchronous == 0) {
-				int invert_tmp;
-
-				/*wait_for() maybe doesn't modify COMMAND structure.*/
-				exec_result = wait_for (paren_pid, 0);
-
-				invert_tmp = (command->flags & CMD_INVERT_RETURN) != 0;
-				ignore_return_tmp = (command->flags & CMD_IGNORE_RETURN) != 0;
-
-				was_error_trap_tmp = signal_is_trapped (ERROR_TRAP) && 
-			     		 		 signal_is_ignored (ERROR_TRAP) == 0;
-
-				/* If we have to, invert the return value. */
-				if (invert_tmp)
-					exec_result = ((exec_result == EXECUTION_SUCCESS) ? 
-							EXECUTION_FAILURE : EXECUTION_SUCCESS);
-
-				last_command_exit_value = exec_result;
-
-				if (user_subshell_tmp && 
-					ignore_return_tmp == 0 && 
-					invert_tmp == 0 && 
-					exec_result != EXECUTION_SUCCESS) {
-
-					if (was_error_trap_tmp) {
-						save_line_number = line_number;
-						line_number = line_number_for_err_trap;
-						run_error_trap ();
-					}
-
-					if (exit_immediately_on_error) {
-						run_pending_traps ();
-						jump_to_top_level (ERREXIT);
-					}
-				}
-
-				return (last_command_exit_value);
-			}
-
-			/*asynchronus*/
-			else {
-				DESCRIBE_PID (paren_pid);
-				run_pending_traps ();
-
-				/* Posix 2013 2.9.3.1: "the exit status of an asynchronous list shall be zero." */
-				last_command_exit_value = 0;
-				return (EXECUTION_SUCCESS);
-			}
-		}
+		return execute_subshell_command (command, asynchronous, pipe_in, pipe_out, fds_to_close, &save_line_number);
 	}
-
 
 
 #if defined (COMMAND_TIMING)

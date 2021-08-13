@@ -194,6 +194,11 @@ static int execute_connection PARAMS((COMMAND *, int, int, int, struct fd_bitmap
 
 static int execute_intern_function PARAMS((WORD_DESC *, FUNCTION_DEF *));
 
+
+/*my functinos*/
+//static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, fds_to_close, save_line_number);
+
+
 /* Set to 1 if fd 0 was the subject of redirection to a subshell.  Global
    so that reader_loop can set it to zero before executing a command. */
 int stdin_redir;
@@ -542,7 +547,9 @@ async_redirect_stdin ()
 
 #define DESCRIBE_PID(pid) do { if (interactive) describe_pid (pid); } while (0)
 
-static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, fds_to_close, save_line_number)
+static int execute_subshell_command (command, asynchronous, 
+		pipe_in, pipe_out, fds_to_close, save_line_number)
+
 	COMMAND *command;
 	int asynchronous;
 	int pipe_in, pipe_out;
@@ -552,11 +559,8 @@ static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, f
 
 	pid_t paren_pid;
 	char *p;
-	int fork_flags;
 	int user_subshell_tmp;
 	int ignore_return_tmp;
-	int was_error_trap_tmp;
-	int exec_result;
 
 	user_subshell_tmp = command->type == cm_subshell || 
 				((command->flags & CMD_WANT_SUBSHELL) != 0);
@@ -565,16 +569,18 @@ static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, f
 	control and call execute_command () on the command again. */
 	*save_line_number = line_number;
 
+
 	if (command->type == cm_subshell) {
 		/* XXX - save value? */
 		line_number_for_err_trap = line_number = command->value.Subshell->line;	
 	}
 
+	user_subshell_tmp = command->type == cm_subshell || 
+				((command->flags & CMD_WANT_SUBSHELL) != 0);
+
 	/* Otherwise we defer setting line_number */
 	p = savestring(make_command_string (command));
-	fork_flags = asynchronous ? FORK_ASYNC : 0;
-
-	paren_pid = make_child (p, fork_flags);
+	paren_pid = make_child (p, asynchronous ? FORK_ASYNC : 0);
 
 	if (user_subshell_tmp && 
 		signal_is_trapped (ERROR_TRAP) && 
@@ -584,6 +590,7 @@ static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, f
 		FREE (the_printed_command_except_trap);
 		the_printed_command_except_trap = savestring (the_printed_command);
 	}
+
 
 	/*executed by child*/
 	if (paren_pid == 0) {
@@ -625,7 +632,6 @@ static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, f
 
 	/*executed by parent*/
 	else {
-
 		close_pipes (pipe_in, pipe_out);
 
 #if defined (PROCESS_SUBSTITUTION) && defined (HAVE_DEV_FD)
@@ -648,28 +654,25 @@ static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, f
 
 		/*synchronus*/
 		if (asynchronous == 0) {
-			int invert_tmp;
-
-			/*wait_for() maybe doesn't modify COMMAND structure.*/
-			exec_result = wait_for (paren_pid, 0);
-
-			invert_tmp = (command->flags & CMD_INVERT_RETURN) != 0;
-			ignore_return_tmp = (command->flags & CMD_IGNORE_RETURN) != 0;
-
-			was_error_trap_tmp = signal_is_trapped (ERROR_TRAP) && 
-							 signal_is_ignored (ERROR_TRAP) == 0;
+			/*I don't think wait_for() modify COMMAND structure.*/
+			int exec_result = wait_for (paren_pid, 0);
 
 			/* If we have to, invert the return value. */
+			int invert_tmp = (command->flags & CMD_INVERT_RETURN) != 0;
 			if (invert_tmp)
 				exec_result = ((exec_result == EXECUTION_SUCCESS) ? 
 						EXECUTION_FAILURE : EXECUTION_SUCCESS);
 
 			last_command_exit_value = exec_result;
 
+			ignore_return_tmp = (command->flags & CMD_IGNORE_RETURN) != 0;
 			if (user_subshell_tmp && 
 				ignore_return_tmp == 0 && 
 				invert_tmp == 0 && 
 				exec_result != EXECUTION_SUCCESS) {
+
+				int was_error_trap_tmp = signal_is_trapped (ERROR_TRAP) && 
+							 	 	signal_is_ignored (ERROR_TRAP) == 0;
 
 				if (was_error_trap_tmp) {
 					*save_line_number = line_number;
@@ -696,6 +699,12 @@ static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, f
 			return (EXECUTION_SUCCESS);
 		}
 	}
+}
+
+
+static int handle_redirections()
+{
+	return 0;
 }
 
 
@@ -789,7 +798,8 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		(shell_control_structure (command->type) &&
 		(pipe_out != NO_PIPE || pipe_in != NO_PIPE || asynchronous))) {
 
-		return execute_subshell_command (command, asynchronous, pipe_in, pipe_out, fds_to_close, &save_line_number);
+		return execute_subshell_command (command, asynchronous, 
+				pipe_in, pipe_out, fds_to_close, &save_line_number);
 	}
 
 
@@ -805,7 +815,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 #if 0
 			if (running_trap == 0)
 #endif
-			currently_executing_command = (COMMAND *)NULL;
+				currently_executing_command = (COMMAND *)NULL;
 		}
 		return (exec_result);
 	}
@@ -835,15 +845,11 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	else
 		saved_fifo = 0;
 
-#endif
+#endif /*PROCESS_SUBSTITUTION*/
+
 
 	/* Handle WHILE FOR CASE etc. with redirections.  (Also '&' input
 	redirection.)  */
-
-	was_error_trap = signal_is_trapped (ERROR_TRAP) && 
-					signal_is_ignored (ERROR_TRAP) == 0;
-
-	ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
 
 	if (do_redirections (command->redirects, RX_ACTIVE|RX_UNDOABLE) != 0) {
 		undo_partial_redirects ();
@@ -856,13 +862,20 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		}
 #endif
 
-		/* Handle redirection error as command failure if errexit set. */
-		last_command_exit_value = EXECUTION_FAILURE;
 
+		last_command_exit_value = EXECUTION_FAILURE;
+		ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
+		invert = (command->flags & CMD_INVERT_RETURN) != 0;
+
+		/* Handle redirection error as command failure if errexit set. */
 		if (ignore_return == 0 && 
 			invert == 0 && 
 			pipe_in == NO_PIPE && 
 			pipe_out == NO_PIPE) {
+
+			was_error_trap = signal_is_trapped (ERROR_TRAP) && 
+					signal_is_ignored (ERROR_TRAP) == 0;
+
 
 			if (was_error_trap) {
 				save_line_number = line_number;
@@ -880,6 +893,9 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		return (last_command_exit_value);
 	}
 
+
+	ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
+
 	my_undo_list = redirection_undo_list;
 	redirection_undo_list = (REDIRECT *)NULL;
 
@@ -895,7 +911,9 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	if (exec_undo_list)
 		add_unwind_protect ((Function *)dispose_redirects, exec_undo_list);
 
+
 	QUIT;
+
 
  	switch (command->type) {
 	case cm_simple: 
@@ -1151,9 +1169,9 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 		if (command->type == cm_function_def)
 			exec_result = execute_intern_function (command->value.Function_def->name,
-				command->value.Function_def);
-		line_number = save_line_number;
+													command->value.Function_def);
 
+		line_number = save_line_number;
 
 		if (was_error_trap && 
 			ignore_return == 0 && 
@@ -1176,8 +1194,8 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			run_pending_traps ();
 			jump_to_top_level (ERREXIT);
 		}
-
 		break;
+
 
 	default:
 		command_error ("execute_command", CMDERR_BADTYPE, command->type, 0);
@@ -1222,6 +1240,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 #if defined (DPAREN_ARITHMETIC)
 		case cm_arith:
 #endif
+
 #if defined (COND_COMMAND)
 		case cm_cond:
 #endif

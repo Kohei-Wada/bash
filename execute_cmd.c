@@ -542,10 +542,15 @@ async_redirect_stdin ()
 
 #define DESCRIBE_PID(pid) do { if (interactive) describe_pid (pid); } while (0)
 
-static int execute_subshell_command()
+static void execute_subshell_command (command, asynchronous, pipe_in, pipe_out, fds_to_close)
+	COMMAND *command;
+	int asynchronous;
+	int pipe_in, pipe_out;
+	struct fd_bitmap *fds_to_close;
 {
-	return 0;
+
 }
+
 
 
 /* Execute the command passed in COMMAND, perhaps doing it asynchronously.
@@ -569,7 +574,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 {
 	int exec_result, user_subshell, invert, ignore_return, was_error_trap;
 	REDIRECT *my_undo_list, *exec_undo_list;
-
 
 	volatile int save_line_number;
 #if defined (PROCESS_SUBSTITUTION)
@@ -633,6 +637,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	}
 #endif
 
+
 	if (command->type == cm_subshell ||
 		(command->flags & (CMD_WANT_SUBSHELL|CMD_FORCE_SUBSHELL)) ||
 		(shell_control_structure (command->type) &&
@@ -643,6 +648,8 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		int fork_flags;
 		int user_subshell_tmp;
 		int ignore_return_tmp;
+		int was_error_trap_tmp;
+
 
 		user_subshell_tmp = command->type == cm_subshell || 
 					((command->flags & CMD_WANT_SUBSHELL) != 0);
@@ -742,7 +749,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 				invert_tmp = (command->flags & CMD_INVERT_RETURN) != 0;
 				ignore_return_tmp = (command->flags & CMD_IGNORE_RETURN) != 0;
 
-				was_error_trap = signal_is_trapped (ERROR_TRAP) && 
+				was_error_trap_tmp = signal_is_trapped (ERROR_TRAP) && 
 			     		 		 signal_is_ignored (ERROR_TRAP) == 0;
 
 				/* If we have to, invert the return value. */
@@ -757,7 +764,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 					invert_tmp == 0 && 
 					exec_result != EXECUTION_SUCCESS) {
 
-					if (was_error_trap) {
+					if (was_error_trap_tmp) {
 						save_line_number = line_number;
 						line_number = line_number_for_err_trap;
 						run_error_trap ();

@@ -768,7 +768,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	int pipe_in, pipe_out;
 	struct fd_bitmap *fds_to_close;
 {
-	int exec_result, user_subshell, invert, ignore_return, was_error_trap;
+	int exec_result, invert, ignore_return, was_error_trap;
 	REDIRECT *my_undo_list, *exec_undo_list;
 
 	volatile int save_line_number;
@@ -820,11 +820,12 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	}
 #endif
 
-	user_subshell = command->type == cm_subshell || 
-					((command->flags & CMD_WANT_SUBSHELL) != 0);
 
 
 #if defined (TIME_BEFORE_SUBSHELL)
+	int user_subshell = command->type == cm_subshell || 
+					((command->flags & CMD_WANT_SUBSHELL) != 0);
+
 	if ((command->flags & CMD_TIME_PIPELINE) && 
 		user_subshell && asynchronous == 0) {
 
@@ -834,6 +835,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		return (exec_result);
 	}
 #endif
+
 
 	if (command->type == cm_subshell ||
 		(command->flags & (CMD_WANT_SUBSHELL|CMD_FORCE_SUBSHELL)) ||
@@ -896,27 +898,21 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 				ofifo_list, saved_fifo, &save_line_number);
 	}
 
-
-	ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
-
 	my_undo_list = redirection_undo_list;
 	redirection_undo_list = (REDIRECT *)NULL;
 
 	exec_undo_list = exec_redirection_undo_list;
 	exec_redirection_undo_list = (REDIRECT *)NULL;
 
-
+	ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
 
 	if (my_undo_list || exec_undo_list) {
 		begin_unwind_frame ("loop_redirections");
-
 		if (my_undo_list)
 			add_unwind_protect ((Function *)cleanup_redirects, my_undo_list);
-
 		if (exec_undo_list)
 			add_unwind_protect ((Function *)dispose_redirects, exec_undo_list);
 	}
-	
 
 	QUIT;
 
@@ -927,11 +923,13 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		/* We can't rely on variables retaining their values across a
 		call to execute_simple_command if a longjmp occurs as the
 		result of a `return' builtin.  This is true for sure with gcc. */
+
 #if defined (RECYCLES_PIDS)
 		last_made_pid = NO_PID;
 #endif
+
 		was_error_trap = signal_is_trapped (ERROR_TRAP) && 
-			signal_is_ignored (ERROR_TRAP) == 0;
+							signal_is_ignored (ERROR_TRAP) == 0;
 
 		if (ignore_return && command->value.Simple)
 			command->value.Simple->flags |= CMD_IGNORE_RETURN;

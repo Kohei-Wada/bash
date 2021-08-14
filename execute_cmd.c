@@ -198,7 +198,7 @@ static int execute_intern_function PARAMS((WORD_DESC *, FUNCTION_DEF *));
 /*my functinos*/
 //static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, fds_to_close, save_line_number);
 //static int handle_redirections();
-
+//static int have_to_fork();
 
 /* Set to 1 if fd 0 was the subject of redirection to a subshell.  Global
    so that reader_loop can set it to zero before executing a command. */
@@ -563,8 +563,6 @@ static int execute_subshell_command (command, asynchronous,
 	int user_subshell_tmp;
 	int ignore_return_tmp;
 
-	user_subshell_tmp = command->type == cm_subshell || 
-				((command->flags & CMD_WANT_SUBSHELL) != 0);
 
 	/* Fork a subshell, turn off the subshell bit, turn off job
 	control and call execute_command () on the command again. */
@@ -584,8 +582,7 @@ static int execute_subshell_command (command, asynchronous,
 	paren_pid = make_child (p, asynchronous ? FORK_ASYNC : 0);
 
 	if (user_subshell_tmp && 
-		signal_is_trapped (ERROR_TRAP) && 
-		signal_in_progress (DEBUG_TRAP) == 0 && 
+		signal_is_trapped (ERROR_TRAP) && signal_in_progress (DEBUG_TRAP) == 0 && 
 		running_trap == 0) {
 
 		FREE (the_printed_command_except_trap);
@@ -620,8 +617,8 @@ static int execute_subshell_command (command, asynchronous,
 			(pipe_in != NO_PIPE || pipe_out != NO_PIPE) && 
 			asynchronous == 0;
 
-		last_command_exit_value = 
-			execute_in_subshell (command, asynchronous, pipe_in, pipe_out, fds_to_close);
+		last_command_exit_value = execute_in_subshell (command, asynchronous, 
+														pipe_in, pipe_out, fds_to_close);
 
 		if (status)
 			subshell_exit (last_command_exit_value);
@@ -655,7 +652,7 @@ static int execute_subshell_command (command, asynchronous,
 
 		/*synchronus*/
 		if (asynchronous == 0) {
-			/*I don't think wait_for() modify COMMAND structure.*/
+			/*XXX I don't think wait_for() modify COMMAND structure.*/
 			int exec_result = wait_for (paren_pid, 0);
 
 			/* If we have to, invert the return value. */
@@ -667,6 +664,7 @@ static int execute_subshell_command (command, asynchronous,
 			last_command_exit_value = exec_result;
 
 			ignore_return_tmp = (command->flags & CMD_IGNORE_RETURN) != 0;
+
 			if (user_subshell_tmp && 
 				ignore_return_tmp == 0 && 
 				invert_tmp == 0 && 
@@ -690,6 +688,7 @@ static int execute_subshell_command (command, asynchronous,
 			return (last_command_exit_value);
 		}
 
+
 		/*asynchronus*/
 		else {
 			DESCRIBE_PID (paren_pid);
@@ -710,7 +709,6 @@ static int handle_redirections (command, pipe_in, pipe_out, ofifo_list, saved_fi
 	void *saved_fifo;
 	int *save_line_number;
 {
-
 	undo_partial_redirects ();
 	dispose_exec_redirects ();
 
@@ -730,6 +728,7 @@ static int handle_redirections (command, pipe_in, pipe_out, ofifo_list, saved_fi
 		pipe_out == NO_PIPE) {
 
 		if ((signal_is_trapped (ERROR_TRAP) && signal_is_ignored (ERROR_TRAP) == 0)) {
+
 			*save_line_number = line_number;
 			line_number = line_number_for_err_trap;
 			run_error_trap ();
@@ -741,7 +740,6 @@ static int handle_redirections (command, pipe_in, pipe_out, ofifo_list, saved_fi
 			jump_to_top_level (ERREXIT);
 		}
 	}
-
 	return (last_command_exit_value);
 }
 
@@ -758,6 +756,7 @@ static int handle_redirections (command, pipe_in, pipe_out, ofifo_list, saved_fi
    EXECUTION_SUCCESS or EXECUTION_FAILURE are the only possible
    return values.  Executing a command with nothing in it returns
    EXECUTION_SUCCESS. */
+
 
 int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_close)
 	COMMAND *command;
@@ -793,20 +792,21 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	/* If we're inverting the return value and `set -e' has been executed,
 	we don't want a failing command to inadvertently cause the shell
 	to exit. */
-
 	invert = (command->flags & CMD_INVERT_RETURN) != 0;
+
 
 	if (exit_immediately_on_error && invert)	/* XXX */
 		command->flags |= CMD_IGNORE_RETURN;	/* XXX */
+
 
 	exec_result = EXECUTION_SUCCESS;
 
 	/* If a command was being explicitly run in a subshell, or if it is
 	a shell control-structure, and it has a pipe, then we do the command
 	in a subshell. */
-
 	if (command->type == cm_subshell && (command->flags & CMD_NO_FORK)) {
-		return (execute_in_subshell (command, asynchronous, pipe_in, pipe_out, fds_to_close));
+		/*this code executed by childe process*/
+		return execute_in_subshell (command, asynchronous, pipe_in, pipe_out, fds_to_close);
 	}
 
 
@@ -817,10 +817,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	}
 #endif
 
-
-
 #if defined (TIME_BEFORE_SUBSHELL)
-
 	if ((command->flags & CMD_TIME_PIPELINE) && 
 		(command->type == cm_subshell || ((command->flags & CMD_WANT_SUBSHELL) != 0)) &&
 		asynchronous == 0) {
@@ -831,7 +828,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		return (exec_result);
 	}
 #endif
-
 
 	if (command->type == cm_subshell ||
 		(command->flags & (CMD_WANT_SUBSHELL|CMD_FORCE_SUBSHELL)) ||
@@ -912,7 +908,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 	QUIT;
 
-
  	switch (command->type) {
 	case cm_simple: 
 		save_line_number = line_number;
@@ -950,7 +945,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		(void) alloca (0);
 #endif /* (ultrix && mips) || C_ALLOCA */
 
-
 		/* If we forked to do the command, then we must wait_for ()
 		the child. */
 
@@ -971,18 +965,17 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 			else
 #if !defined (JOB_CONTROL)
-			/* Do not wait for asynchronous processes started from
-			startup files. */
+			/* Do not wait for asynchronous processes started from startup files. */
 			if (last_made_pid != NO_PID && last_made_pid != last_asynchronous_pid)
 #else
-				if (last_made_pid != NO_PID)
+			if (last_made_pid != NO_PID)
 #endif
-					/* When executing a shell function that executes other
-					commands, this causes the last simple command in
-					the function to be waited for twice.  This also causes
-					subshells forked to execute builtin commands (e.g., in
-					pipelines) to be waited for twice. */
-					exec_result = wait_for (last_made_pid, 0);
+				/* When executing a shell function that executes other
+				commands, this causes the last simple command in
+				the function to be waited for twice.  This also causes
+				subshells forked to execute builtin commands (e.g., in
+				pipelines) to be waited for twice. */
+				exec_result = wait_for (last_made_pid, 0);
 		}
 
 		/* 2009/02/13 -- pipeline failure is processed elsewhere.  This handles
@@ -1024,13 +1017,11 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			if (exit_immediately_on_error && 
 				signal_is_trapped (0) &&
 				unwind_protect_tag_on_stack ("saved-redirects")) {
-
 				run_unwind_frame ("saved-redirects");
 			}
 
 			jump_to_top_level (ERREXIT);
 		}
-
 
 		break;
 
@@ -1115,7 +1106,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			command->flags |= CMD_FORCE_SUBSHELL;
 			exec_result = execute_command_internal (command, 1, pipe_in, pipe_out, fds_to_close);
 		}
-
 		else {
 			if (ignore_return && command->value.Group->command)
 				command->value.Group->command->flags |= CMD_IGNORE_RETURN;
@@ -1157,6 +1147,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 		line_number_for_err_trap = save_line_number = line_number;
 
+
 #if defined (DPAREN_ARITHMETIC)
 		if (command->type == cm_arith)
 			exec_result = execute_arith_command (command->value.Arith);
@@ -1172,7 +1163,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		if (command->type == cm_function_def)
 			exec_result = execute_intern_function (command->value.Function_def->name,
 													command->value.Function_def);
-
 		line_number = save_line_number;
 
 		if (was_error_trap && 
@@ -1196,8 +1186,8 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 			run_pending_traps ();
 			jump_to_top_level (ERREXIT);
 		}
-		break;
 
+		break;
 
 	default:
 		command_error ("execute_command", CMDERR_BADTYPE, command->type, 0);
@@ -1205,16 +1195,12 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 
 	if (my_undo_list || exec_undo_list) {
-
 		if (my_undo_list)
 			cleanup_redirects (my_undo_list);
-
 		if (exec_undo_list)
 			dispose_redirects (exec_undo_list);
-
 		discard_unwind_frame ("loop_redirections");
 	}
-
 
 #if defined (PROCESS_SUBSTITUTION)
 
@@ -1241,6 +1227,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	cause confusion).  We might be able to optimize by not doing this if
 	subshell_environment != 0. */
 
+
 	switch (command->type) {
 #if defined (DPAREN_ARITHMETIC)
 		case cm_arith:
@@ -1249,14 +1236,11 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 #if defined (COND_COMMAND)
 		case cm_cond:
 #endif
-			set_pipestatus_from_exit (exec_result);
-			break;
+			set_pipestatus_from_exit (exec_result); break;
 
-		default:
-			break;
+		default: break;
 	}
 #endif
-
 	last_command_exit_value = exec_result;
 	run_pending_traps ();
 	return (last_command_exit_value);
@@ -1334,6 +1318,7 @@ mkfmt (buf, prec, lng, sec, sec_fraction)
 
   return (ind);
 }
+
 
 /* Interpret the format string FORMAT, interpolating the following escape
    sequences:
@@ -4395,6 +4380,36 @@ is_dirname (pathname)
 }
 
 
+
+static int have_to_fork (simple_command, pipe_in, pipe_out, async)
+     SIMPLE_COM *simple_command;
+     int pipe_in, pipe_out, async;
+{
+	/* If we're in a pipeline or run in the background, set DOFORK so we
+	make the child early, before word expansion.  This keeps assignment
+	statements from affecting the parent shell's environment when they
+	should not. */
+
+	int dofork = pipe_in != NO_PIPE || pipe_out != NO_PIPE || async;
+
+	/* Something like `%2 &' should restart job 2 in the background, not cause
+	the shell to fork here. */
+	if (dofork && 
+		pipe_in == NO_PIPE && 
+		pipe_out == NO_PIPE &&
+		simple_command->words && 
+		simple_command->words->word &&
+		simple_command->words->word->word &&
+		(simple_command->words->word->word[0] == '%')) {
+
+		dofork = 0;
+	}
+
+	return dofork;
+}
+
+
+
 /* The meaty part of all the executions.  We have to start hacking the
    real execution of commands here.  Fork a process, set things up,
    execute the command. */
@@ -4404,9 +4419,10 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
      int pipe_in, pipe_out, async;
      struct fd_bitmap *fds_to_close;
 {
+
 	WORD_LIST *words, *lastword;
 	char *command_line, *lastarg, *temp;
-	int first_word_quoted, result, builtin_is_special, already_forked, dofork;
+	int first_word_quoted, result, builtin_is_special, already_forked;
 	int fork_flags, cmdflags;
 	pid_t old_last_async_pid;
 	sh_builtin_func_t *builtin;
@@ -4471,41 +4487,24 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 
 	already_forked = 0;
 
-	/* If we're in a pipeline or run in the background, set DOFORK so we
-	make the child early, before word expansion.  This keeps assignment
-	statements from affecting the parent shell's environment when they
-	should not. */
-
-	dofork = pipe_in != NO_PIPE || pipe_out != NO_PIPE || async;
-
-	/* Something like `%2 &' should restart job 2 in the background, not cause
-	the shell to fork here. */
-
-	if (dofork && 
-		pipe_in == NO_PIPE && 
-		pipe_out == NO_PIPE &&
-		simple_command->words && 
-		simple_command->words->word &&
-		simple_command->words->word->word &&
-		(simple_command->words->word->word[0] == '%')) {
-
-		dofork = 0;
-	}
-
-
-	if (dofork) {
-		char *p;
+	if (have_to_fork (simple_command, pipe_in, pipe_out, async)) {
+		pid_t pid;
 
 		/* Do this now, because execute_disk_command will do it anyway in the
 		vast majority of cases. */
 		maybe_make_export_env ();
+
 
 		/* Don't let a DEBUG trap overwrite the command string to be saved with
 		the process/job associated with this child. */
 
 		fork_flags = async ? FORK_ASYNC : 0;
 
-		if (make_child (p = savestring (the_printed_command_except_trap), fork_flags) == 0) {
+		char *p = savestring (the_printed_command_except_trap);
+		pid = make_child(p, fork_flags);
+
+		if (pid == 0) {
+			/*executed by child*/
 
 			already_forked = 1;
 			cmdflags |= CMD_NO_FORK;
@@ -4536,7 +4535,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 #if defined (COPROCESS_SUPPORT)
 			coproc_closeall ();
 #endif
-
 			last_asynchronous_pid = old_last_async_pid;
 
 			if (async)
@@ -4545,22 +4543,24 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 #if defined (JOB_CONTROL)
 			FREE (p);			/* child doesn't use pointer */
 #endif
-
 		}
+
 		else {
+			/*executed by parent*/
+
 			/* Don't let simple commands that aren't the last command in a
 			pipeline change $? for the rest of the pipeline (or at all). */
-
 			if (pipe_out != NO_PIPE)
 				result = last_command_exit_value;
 
 			close_pipes (pipe_in, pipe_out);
 			command_line = (char *)NULL;      /* don't free this. */
+
 			return (result);
 		}
 	}
 
-	QUIT;		/* XXX */
+	QUIT;	/* XXX */
 
 	/* If we are re-running this as the result of executing the `command'
 	builtin, do not expand the command words a second time. */
@@ -4882,7 +4882,6 @@ run_builtin:
 				else if (result > EX_SHERRBASE)
 					result = builtin_status (result);
 			}
-
 
 			set_pipestatus_from_exit (result);
 			goto return_result;

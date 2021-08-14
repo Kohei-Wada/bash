@@ -4422,8 +4422,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 
 	WORD_LIST *words, *lastword;
 	char *command_line, *lastarg, *temp;
-	int first_word_quoted, result, builtin_is_special, already_forked;
-	int fork_flags, cmdflags;
+	int first_word_quoted, result, builtin_is_special, already_forked, cmdflags;
 	pid_t old_last_async_pid;
 	sh_builtin_func_t *builtin;
 	SHELL_VAR *func;
@@ -4494,14 +4493,11 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		vast majority of cases. */
 		maybe_make_export_env ();
 
-
 		/* Don't let a DEBUG trap overwrite the command string to be saved with
 		the process/job associated with this child. */
 
-		fork_flags = async ? FORK_ASYNC : 0;
-
 		char *p = savestring (the_printed_command_except_trap);
-		pid = make_child(p, fork_flags);
+		pid = make_child(p, async ? FORK_ASYNC : 0);
 
 		if (pid == 0) {
 			/*executed by child*/
@@ -4583,7 +4579,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	}
 	else
 		words = copy_word_list (simple_command->words);
-
 
 	/* It is possible for WORDS not to have anything left in it.
 	Perhaps all the words consisted of `$foo', and there was

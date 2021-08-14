@@ -710,6 +710,7 @@ static int handle_redirections (command, pipe_in, pipe_out, ofifo_list, saved_fi
 	void *saved_fifo;
 	int *save_line_number;
 {
+
 	undo_partial_redirects ();
 	dispose_exec_redirects ();
 
@@ -721,19 +722,14 @@ static int handle_redirections (command, pipe_in, pipe_out, ofifo_list, saved_fi
 #endif
 
 	last_command_exit_value = EXECUTION_FAILURE;
-	int ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
-	int invert = (command->flags & CMD_INVERT_RETURN) != 0;
 
 	/* Handle redirection error as command failure if errexit set. */
-	if (ignore_return == 0 && 
-		invert == 0 && 
+	if (((command->flags & CMD_IGNORE_RETURN) != 0) == 0 &&
+		((command->flags & CMD_INVERT_RETURN) != 0) == 0 &&
 		pipe_in == NO_PIPE && 
 		pipe_out == NO_PIPE) {
 
-		int was_error_trap = signal_is_trapped (ERROR_TRAP) && 
-							signal_is_ignored (ERROR_TRAP) == 0;
-
-		if (was_error_trap) {
+		if ((signal_is_trapped (ERROR_TRAP) && signal_is_ignored (ERROR_TRAP) == 0)) {
 			*save_line_number = line_number;
 			line_number = line_number_for_err_trap;
 			run_error_trap ();
@@ -745,6 +741,7 @@ static int handle_redirections (command, pipe_in, pipe_out, ofifo_list, saved_fi
 			jump_to_top_level (ERREXIT);
 		}
 	}
+
 	return (last_command_exit_value);
 }
 

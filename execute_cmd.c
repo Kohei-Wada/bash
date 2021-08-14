@@ -197,6 +197,7 @@ static int execute_intern_function PARAMS((WORD_DESC *, FUNCTION_DEF *));
 
 /*my functinos*/
 //static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, fds_to_close, save_line_number);
+//static int handle_redirections();
 
 
 /* Set to 1 if fd 0 was the subject of redirection to a subshell.  Global
@@ -709,43 +710,42 @@ static int handle_redirections (command, pipe_in, pipe_out, ofifo_list, saved_fi
 	void *saved_fifo;
 	int *save_line_number;
 {
-		undo_partial_redirects ();
-		dispose_exec_redirects ();
+	undo_partial_redirects ();
+	dispose_exec_redirects ();
 
 #if defined (PROCESS_SUBSTITUTION)
-		if (saved_fifo) {
-			free ((void *)ofifo_list);
-			discard_unwind_frame ("internal_fifos");
-		}
+	if (saved_fifo) {
+		free ((void *)ofifo_list);
+		discard_unwind_frame ("internal_fifos");
+	}
 #endif
 
-		last_command_exit_value = EXECUTION_FAILURE;
-		int ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
-		int invert = (command->flags & CMD_INVERT_RETURN) != 0;
+	last_command_exit_value = EXECUTION_FAILURE;
+	int ignore_return = (command->flags & CMD_IGNORE_RETURN) != 0;
+	int invert = (command->flags & CMD_INVERT_RETURN) != 0;
 
-		/* Handle redirection error as command failure if errexit set. */
-		if (ignore_return == 0 && 
-			invert == 0 && 
-			pipe_in == NO_PIPE && 
-			pipe_out == NO_PIPE) {
+	/* Handle redirection error as command failure if errexit set. */
+	if (ignore_return == 0 && 
+		invert == 0 && 
+		pipe_in == NO_PIPE && 
+		pipe_out == NO_PIPE) {
 
-			int was_error_trap = signal_is_trapped (ERROR_TRAP) && 
-								signal_is_ignored (ERROR_TRAP) == 0;
+		int was_error_trap = signal_is_trapped (ERROR_TRAP) && 
+							signal_is_ignored (ERROR_TRAP) == 0;
 
-			if (was_error_trap) {
-				*save_line_number = line_number;
-				line_number = line_number_for_err_trap;
-				run_error_trap ();
-				line_number = *save_line_number;
-			}
-
-			if (exit_immediately_on_error) {	  
-				run_pending_traps ();
-				jump_to_top_level (ERREXIT);
-			}
+		if (was_error_trap) {
+			*save_line_number = line_number;
+			line_number = line_number_for_err_trap;
+			run_error_trap ();
+			line_number = *save_line_number;
 		}
 
-		return (last_command_exit_value);
+		if (exit_immediately_on_error) {	  
+			run_pending_traps ();
+			jump_to_top_level (ERREXIT);
+		}
+	}
+	return (last_command_exit_value);
 }
 
 
@@ -784,6 +784,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		return (EXECUTION_SUCCESS);
 
 	QUIT;
+
 	run_pending_traps ();
 
 #if 0
@@ -791,7 +792,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 #endif
 
 	currently_executing_command = command;
-
 
 	/* If we're inverting the return value and `set -e' has been executed,
 	we don't want a failing command to inadvertently cause the shell
@@ -812,6 +812,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		return (execute_in_subshell (command, asynchronous, pipe_in, pipe_out, fds_to_close));
 	}
 
+
 #if defined (COPROCESS_SUPPORT)
 	if (command->type == cm_coproc) {
 		last_command_exit_value = execute_coproc (command, pipe_in, pipe_out, fds_to_close);
@@ -821,6 +822,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 	user_subshell = command->type == cm_subshell || 
 					((command->flags & CMD_WANT_SUBSHELL) != 0);
+
 
 #if defined (TIME_BEFORE_SUBSHELL)
 	if ((command->flags & CMD_TIME_PIPELINE) && 
@@ -842,7 +844,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 				pipe_in, pipe_out, fds_to_close, &save_line_number);
 	}
 
-
 #if defined (COMMAND_TIMING)
 	if (command->flags & CMD_TIME_PIPELINE) {
 
@@ -861,7 +862,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	}
 
 #endif /* COMMAND_TIMING */
-
 	if (shell_control_structure (command->type) && command->redirects)
 		stdin_redir = stdin_redirects (command->redirects);
 
@@ -905,16 +905,21 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	exec_undo_list = exec_redirection_undo_list;
 	exec_redirection_undo_list = (REDIRECT *)NULL;
 
-	if (my_undo_list || exec_undo_list)
+
+
+	if (my_undo_list || exec_undo_list) {
 		begin_unwind_frame ("loop_redirections");
 
-	if (my_undo_list)
-		add_unwind_protect ((Function *)cleanup_redirects, my_undo_list);
+		if (my_undo_list)
+			add_unwind_protect ((Function *)cleanup_redirects, my_undo_list);
 
-	if (exec_undo_list)
-		add_unwind_protect ((Function *)dispose_redirects, exec_undo_list);
+		if (exec_undo_list)
+			add_unwind_protect ((Function *)dispose_redirects, exec_undo_list);
+	}
+	
 
 	QUIT;
+
 
  	switch (command->type) {
 	case cm_simple: 
@@ -1028,11 +1033,12 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 				run_unwind_frame ("saved-redirects");
 			}
+
 			jump_to_top_level (ERREXIT);
 		}
 
-		break;
 
+		break;
 
 	case cm_for:
 		if (ignore_return)
@@ -1060,7 +1066,6 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		break;
 #endif
 
-
 	case cm_case:
 		if (ignore_return)
 			command->value.Case->flags |= CMD_IGNORE_RETURN;
@@ -1082,6 +1087,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	case cm_if:
 		if (ignore_return)
 			command->value.If->flags |= CMD_IGNORE_RETURN;
+
 		exec_result = execute_if_command (command->value.If);
 		break;
 
@@ -1119,6 +1125,7 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 		else {
 			if (ignore_return && command->value.Group->command)
 				command->value.Group->command->flags |= CMD_IGNORE_RETURN;
+
 			exec_result = execute_command_internal (command->value.Group->command,
 				      asynchronous, pipe_in, pipe_out, fds_to_close);
 		}
@@ -1203,14 +1210,17 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 	}
 
 
-	if (my_undo_list)
-		cleanup_redirects (my_undo_list);
+	if (my_undo_list || exec_undo_list) {
 
-	if (exec_undo_list)
-		dispose_redirects (exec_undo_list);
+		if (my_undo_list)
+			cleanup_redirects (my_undo_list);
 
-	if (my_undo_list || exec_undo_list)
+		if (exec_undo_list)
+			dispose_redirects (exec_undo_list);
+
 		discard_unwind_frame ("loop_redirections");
+	}
+
 
 #if defined (PROCESS_SUBSTITUTION)
 

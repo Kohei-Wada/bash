@@ -823,11 +823,10 @@ int execute_command_internal (command, asynchronous, pipe_in, pipe_out, fds_to_c
 
 
 #if defined (TIME_BEFORE_SUBSHELL)
-	int user_subshell = command->type == cm_subshell || 
-					((command->flags & CMD_WANT_SUBSHELL) != 0);
 
 	if ((command->flags & CMD_TIME_PIPELINE) && 
-		user_subshell && asynchronous == 0) {
+		(command->type == cm_subshell || ((command->flags & CMD_WANT_SUBSHELL) != 0)) &&
+		asynchronous == 0) {
 
 		command->flags |= CMD_FORCE_SUBSHELL;
 		exec_result = time_command (command, asynchronous, pipe_in, pipe_out, fds_to_close);

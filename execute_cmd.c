@@ -4409,15 +4409,65 @@ static int have_to_fork (simple_command, pipe_in, pipe_out, async)
 }
 
 
+/*XXX this return expanded command arguments?*/
+static WORD_LIST *expand_command_words(simple_command, cmdflags, fds_to_close)
+     SIMPLE_COM *simple_command;
+     int cmdflags;
+     struct fd_bitmap *fds_to_close;
+{
+	WORD_LIST *words;
+
+	if ((cmdflags & CMD_INHIBIT_EXPANSION) == 0) {
+		current_fds_to_close = fds_to_close;
+		fix_assignment_words (simple_command->words);
+
+		/* Pass the ignore return flag down to command substitutions */
+		if (cmdflags & CMD_IGNORE_RETURN)	/* XXX */
+			comsub_ignore_return++;
+
+		words = expand_words (simple_command->words);
+
+		if (cmdflags & CMD_IGNORE_RETURN)
+			comsub_ignore_return--;
+
+		current_fds_to_close = (struct fd_bitmap *)NULL;
+	}
+	else
+		words = copy_word_list (simple_command->words);
+
+	return words;
+}
+
+
+static int execute_nothing(simple_command, pipe_in, pipe_out, async, already_forked)
+	SIMPLE_COM *simple_command;
+	int pipe_in, pipe_out, async;
+	int already_forked;
+{
+	int result;
+
+	this_command_name = 0;
+	result = execute_null_command (simple_command->redirects,
+									pipe_in, pipe_out,
+									already_forked ? 0 : async);
+	if (already_forked)
+		sh_exit (result);
+	else {
+		bind_lastarg ((char *)NULL);
+		set_pipestatus_from_exit (result);
+		return (result);
+	}
+}
+
 
 /* The meaty part of all the executions.  We have to start hacking the
    real execution of commands here.  Fork a process, set things up,
    execute the command. */
 
 static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds_to_close)
-     SIMPLE_COM *simple_command;
-     int pipe_in, pipe_out, async;
-     struct fd_bitmap *fds_to_close;
+	SIMPLE_COM *simple_command;
+	int pipe_in, pipe_out, async;
+	struct fd_bitmap *fds_to_close;
 {
 
 	WORD_LIST *words, *lastword;
@@ -4483,8 +4533,8 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	last_command_subst_pid = NO_PID;
 
 	old_last_async_pid = last_asynchronous_pid;
-
 	already_forked = 0;
+
 
 	if (have_to_fork (simple_command, pipe_in, pipe_out, async)) {
 		pid_t pid;
@@ -4526,7 +4576,9 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			stdin_redir |= pipe_in != NO_PIPE;
 
 			do_piping (pipe_in, pipe_out);
-			pipe_in = pipe_out = NO_PIPE;
+
+			pipe_in = NO_PIPE;
+			pipe_out = NO_PIPE;
 
 #if defined (COPROCESS_SUPPORT)
 			coproc_closeall ();
@@ -4561,43 +4613,14 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	/* If we are re-running this as the result of executing the `command'
 	builtin, do not expand the command words a second time. */
 
-	if ((cmdflags & CMD_INHIBIT_EXPANSION) == 0) {
-
-		current_fds_to_close = fds_to_close;
-		fix_assignment_words (simple_command->words);
-
-		/* Pass the ignore return flag down to command substitutions */
-		if (cmdflags & CMD_IGNORE_RETURN)	/* XXX */
-			comsub_ignore_return++;
-
-		words = expand_words (simple_command->words);
-
-		if (cmdflags & CMD_IGNORE_RETURN)
-			comsub_ignore_return--;
-
-		current_fds_to_close = (struct fd_bitmap *)NULL;
-	}
-	else
-		words = copy_word_list (simple_command->words);
+	words = expand_command_words(simple_command, cmdflags, fds_to_close);
 
 	/* It is possible for WORDS not to have anything left in it.
 	Perhaps all the words consisted of `$foo', and there was
 	no variable `$foo'. */
 
-	if (words == 0) { 
-		this_command_name = 0;
-		result = execute_null_command (simple_command->redirects,
-										pipe_in, pipe_out,
-										already_forked ? 0 : async);
-		if (already_forked)
-			sh_exit (result);
-
-		else {
-			bind_lastarg ((char *)NULL);
-			set_pipestatus_from_exit (result);
-			return (result);
-		}
-    }
+	if (words == 0) 
+		return execute_nothing(simple_command, pipe_in, pipe_out, async, already_forked);
 
 
 	begin_unwind_frame ("simple-command");
@@ -4608,10 +4631,10 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	builtin = (sh_builtin_func_t *)NULL;
 	func = (SHELL_VAR *)NULL;
 
-
 	/* This test is still here in case we want to change the command builtin
 	handler code below to recursively call execute_simple_command (after
 	modifying the simple_command struct). */
+
 
 	if ((cmdflags & CMD_NO_FUNCTIONS) == 0) {
 		/* Posix.2 says special builtins are found before functions.  We
@@ -4632,7 +4655,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			func = find_function (words->word->word);
 	}
 
-
 	/* In POSIX mode, assignment errors in the temporary environment cause a
 	non-interactive shell to exit. */
 
@@ -4645,7 +4667,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		last_command_exit_value = EXECUTION_FAILURE;
 		jump_to_top_level (ERREXIT);
 	}
-
 
 	tempenv_assign_error = 0;	/* don't care about this any more */
 
@@ -4692,10 +4713,9 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		builtin = 0;
 	}
 
-
 	add_unwind_protect (dispose_words, words);
-	QUIT;
 
+	QUIT;
 
 	/* Bind the last word in this command to "$_" after execution. */
 	lastarg = (char *)NULL;
@@ -4821,7 +4841,6 @@ run_builtin:
 					simple_command->redirects, builtin, 
 					func,pipe_in, pipe_out, async, fds_to_close, cmdflags);
 
-
 			subshell_level--;
 		}
 
@@ -4882,7 +4901,6 @@ run_builtin:
 			goto return_result;
 		}
 	}
-
 
 	if (autocd && interactive && words->word && is_dirname (words->word->word)) {
 		words = make_word_list (make_word ("--"), words);

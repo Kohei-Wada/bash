@@ -4670,21 +4670,16 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 
 	old_command_builtin = -1;
 
-
 	if (builtin == 0 && func == 0) {
 
-		sh_builtin_func_t *builtin_tmp;
 		WORD_LIST *disposer, *l;
 		int cmdtype;
 
-		builtin_tmp = find_shell_builtin (words->word->word);
-
-		while (builtin_tmp == command_builtin) {
+		while (find_shell_builtin (words->word->word) == command_builtin) {
 			disposer = words;
 			cmdtype = 0;
 
 			words = check_command_builtin (words, &cmdtype);
-
 			if (cmdtype > 0) {	
 				/* command -p [--] words */
 
@@ -4696,8 +4691,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 
 				if (cmdtype == 2)
 					cmdflags |= CMD_STDPATH;
-
-				builtin_tmp = find_shell_builtin (words->word->word);
 			}
 			else 
 				break;

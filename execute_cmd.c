@@ -4459,6 +4459,43 @@ static int execute_nothing(simple_command, pipe_in, pipe_out, async, already_for
 }
 
 
+
+static int calc_optimize_flags(words, cmdflags)
+WORD_LIST **words;
+int cmdflags;
+{
+	int cmdflags_tmp = cmdflags;
+	int cmdtype;
+
+	WORD_LIST *disposer, *l;
+
+	while (find_shell_builtin ((*words)->word->word) == command_builtin) {
+		disposer = *words;
+		cmdtype = 0;
+
+		*words = check_command_builtin (*words, &cmdtype);
+
+		if (cmdtype > 0) {	
+			/* command -p [--] words */
+
+			for (l = disposer; l->next != *words; l = l->next);
+
+			l->next = 0;
+			dispose_words (disposer);
+			cmdflags_tmp |= CMD_COMMAND_BUILTIN | CMD_NO_FUNCTIONS;
+
+			if (cmdtype == 2)
+				cmdflags_tmp |= CMD_STDPATH;
+		}
+		else 
+			break;
+	}
+
+	return cmdflags_tmp;
+}
+
+
+
 /* The meaty part of all the executions.  We have to start hacking the
    real execution of commands here.  Fork a process, set things up,
    execute the command. */
@@ -4663,7 +4700,8 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		jump_to_top_level (ERREXIT);
 	}
 
-	tempenv_assign_error = 0;	/* don't care about this any more */
+	/* don't care about this any more */
+	tempenv_assign_error = 0;	
 
 	/* This is where we handle the command builtin as a pseudo-reserved word
 	prefix. This allows us to optimize away forks if we can. */
@@ -4671,30 +4709,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	old_command_builtin = -1;
 
 	if (builtin == 0 && func == 0) {
-
-		WORD_LIST *disposer, *l;
-		int cmdtype;
-
-		while (find_shell_builtin (words->word->word) == command_builtin) {
-			disposer = words;
-			cmdtype = 0;
-
-			words = check_command_builtin (words, &cmdtype);
-			if (cmdtype > 0) {	
-				/* command -p [--] words */
-
-				for (l = disposer; l->next != words; l = l->next);
-
-				l->next = 0;
-				dispose_words (disposer);
-				cmdflags |= CMD_COMMAND_BUILTIN | CMD_NO_FUNCTIONS;
-
-				if (cmdtype == 2)
-					cmdflags |= CMD_STDPATH;
-			}
-			else 
-				break;
-		}
+		cmdflags = calc_optimize_flags(&words, cmdflags);
 
 		if (cmdflags & CMD_COMMAND_BUILTIN) {
 			old_command_builtin = executing_command_builtin;
@@ -4711,9 +4726,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	lastarg = (char *)NULL;
 
 	for (lastword = words; lastword->next; lastword = lastword->next);
-
 	lastarg = lastword->word->word;
-
 
 #if defined (JOB_CONTROL)
 

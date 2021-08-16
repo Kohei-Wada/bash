@@ -4481,13 +4481,10 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	special_builtin_failed = builtin_is_special = 0;
 	command_line = (char *)0;
 
-
 	QUIT;
-
 
 	/* If we're in a function, update the line number information. */
 	if (variable_context && interactive_shell && sourcelevel == 0) {
-
 		/* line numbers in a function start at 1 */
 		line_number -= function_line_number - 1;
 
@@ -4495,11 +4492,9 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			line_number = 1;
     }
 
-
 	/* Remember what this command line looks like at invocation. */
 	command_string_index = 0;
 	print_simple_command (simple_command);
-
 
 #if 0
 	if (signal_in_progress (DEBUG_TRAP) == 0 && 
@@ -4534,10 +4529,8 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		(simple_command->words->word->flags & W_QUOTED) : 0;
 
 	last_command_subst_pid = NO_PID;
-
 	old_last_async_pid = last_asynchronous_pid;
 	already_forked = 0;
-
 
 	/*background or pipeline*/
 	if (have_to_fork (simple_command, pipe_in, pipe_out, async)) {
@@ -4551,7 +4544,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		the process/job associated with this child. */
 		char *p = savestring (the_printed_command_except_trap);
 		pid_t pid = make_child(p, async ? FORK_ASYNC : 0);
-
 
 		if (pid == 0) {
 			/*executed by child*/
@@ -4621,6 +4613,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	words = expand_command_words(simple_command, cmdflags, fds_to_close);
 
 
+
 	/* It is possible for WORDS not to have anything left in it.
 	Perhaps all the words consisted of `$foo', and there was
 	no variable `$foo'. */
@@ -4670,8 +4663,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		jump_to_top_level (ERREXIT);
 	}
 
-
-
 	tempenv_assign_error = 0;	/* don't care about this any more */
 
 	/* This is where we handle the command builtin as a pseudo-reserved word
@@ -4679,19 +4670,24 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 
 	old_command_builtin = -1;
 
+
 	if (builtin == 0 && func == 0) {
 
+		sh_builtin_func_t *builtin_tmp;
 		WORD_LIST *disposer, *l;
 		int cmdtype;
 
-		builtin = find_shell_builtin (words->word->word);
+		builtin_tmp = find_shell_builtin (words->word->word);
 
-		while (builtin == command_builtin) {
+		while (builtin_tmp == command_builtin) {
 			disposer = words;
 			cmdtype = 0;
+
 			words = check_command_builtin (words, &cmdtype);
 
-			if (cmdtype > 0) {	/* command -p [--] words */
+			if (cmdtype > 0) {	
+				/* command -p [--] words */
+
 				for (l = disposer; l->next != words; l = l->next);
 
 				l->next = 0;
@@ -4701,9 +4697,9 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 				if (cmdtype == 2)
 					cmdflags |= CMD_STDPATH;
 
-				builtin = find_shell_builtin (words->word->word);
+				builtin_tmp = find_shell_builtin (words->word->word);
 			}
-			else
+			else 
 				break;
 		}
 
@@ -4712,15 +4708,11 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			unwind_protect_int (executing_command_builtin);
 			executing_command_builtin |= 1;
 		}        
-
-		builtin = 0;
 	}
-
 
 	add_unwind_protect (dispose_words, words);
 
 	QUIT;
-
 
 	/* Bind the last word in this command to "$_" after execution. */
 	lastarg = (char *)NULL;
@@ -4794,7 +4786,6 @@ run_builtin:
 
 	QUIT;
 
-
 	/* This command could be a shell builtin or a user-defined function.
 	We have already found special builtins by this time, so we do not
 	set builtin_is_special.  If this is a function or builtin, and we
@@ -4829,7 +4820,10 @@ run_builtin:
 			reset_signal_handlers ();
 			subshell_environment |= SUBSHELL_RESETTRAP;
 
-			if (async) {
+			if (!async)
+				subshell_level++;
+
+			else {
 				if ((cmdflags & CMD_STDIN_REDIR) &&
 					pipe_in == NO_PIPE &&
 					(stdin_redirects (simple_command->redirects) == 0))
@@ -4839,27 +4833,25 @@ run_builtin:
 				setup_async_signals ();
 			}
 
-			else if (async == 0)
-				subshell_level++;
-
 			execute_subshell_builtin_or_function(words, 
 					simple_command->redirects, builtin, 
 					func,pipe_in, pipe_out, async, fds_to_close, cmdflags);
 
 			subshell_level--;
 		}
+
 		else {
-			result = execute_builtin_or_function(
-					words, builtin, func, simple_command->redirects, fds_to_close,cmdflags);
+			result = execute_builtin_or_function(words, builtin, func, 
+					simple_command->redirects, fds_to_close,cmdflags);
 
 			if (builtin) {
+
 				if (result > EX_SHERRBASE) {
 					switch (result){
 					case EX_REDIRFAIL:
 					case EX_BADASSIGN:
 					case EX_EXPFAIL:
-
-					/* These errors cause non-interactive posix mode shells to exit */
+						/* These errors cause non-interactive posix mode shells to exit */
 						if (posixly_correct && builtin_is_special && interactive_shell == 0) {
 							last_command_exit_value = EXECUTION_FAILURE;
 							jump_to_top_level (ERREXIT);
@@ -4888,6 +4880,7 @@ run_builtin:
 
 				if (posixly_correct && builtin_is_special && temporary_env)
 					merge_temporary_env ();
+
 			}
 
 			else {

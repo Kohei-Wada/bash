@@ -4404,7 +4404,6 @@ static int have_to_fork (simple_command, pipe_in, pipe_out, async)
 
 		dofork = 0;
 	}
-
 	return dofork;
 }
 
@@ -4482,7 +4481,9 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	special_builtin_failed = builtin_is_special = 0;
 	command_line = (char *)0;
 
+
 	QUIT;
+
 
 	/* If we're in a function, update the line number information. */
 	if (variable_context && interactive_shell && sourcelevel == 0) {
@@ -4494,9 +4495,11 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			line_number = 1;
     }
 
+
 	/* Remember what this command line looks like at invocation. */
 	command_string_index = 0;
 	print_simple_command (simple_command);
+
 
 #if 0
 	if (signal_in_progress (DEBUG_TRAP) == 0 && 
@@ -4536,18 +4539,19 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	already_forked = 0;
 
 
+	/*background or pipeline*/
 	if (have_to_fork (simple_command, pipe_in, pipe_out, async)) {
-		pid_t pid;
 
 		/* Do this now, because execute_disk_command will do it anyway in the
 		vast majority of cases. */
 		maybe_make_export_env ();
 
+
 		/* Don't let a DEBUG trap overwrite the command string to be saved with
 		the process/job associated with this child. */
-
 		char *p = savestring (the_printed_command_except_trap);
-		pid = make_child(p, async ? FORK_ASYNC : 0);
+		pid_t pid = make_child(p, async ? FORK_ASYNC : 0);
+
 
 		if (pid == 0) {
 			/*executed by child*/
@@ -4592,7 +4596,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			FREE (p);			/* child doesn't use pointer */
 #endif
 		}
-
 		else {
 			/*executed by parent*/
 
@@ -4608,12 +4611,15 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		}
 	}
 
+
 	QUIT;	/* XXX */
+
 
 	/* If we are re-running this as the result of executing the `command'
 	builtin, do not expand the command words a second time. */
 
 	words = expand_command_words(simple_command, cmdflags, fds_to_close);
+
 
 	/* It is possible for WORDS not to have anything left in it.
 	Perhaps all the words consisted of `$foo', and there was
@@ -4622,19 +4628,17 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	if (words == 0) 
 		return execute_nothing(simple_command, pipe_in, pipe_out, async, already_forked);
 
-
 	begin_unwind_frame ("simple-command");
 
 	if (echo_command_at_execute && (cmdflags & CMD_COMMAND_BUILTIN) == 0)
 		xtrace_print_word_list (words, 1);
 
-	builtin = (sh_builtin_func_t *)NULL;
-	func = (SHELL_VAR *)NULL;
-
 	/* This test is still here in case we want to change the command builtin
 	handler code below to recursively call execute_simple_command (after
 	modifying the simple_command struct). */
 
+	builtin = (sh_builtin_func_t *)NULL;
+	func = (SHELL_VAR *)NULL;
 
 	if ((cmdflags & CMD_NO_FUNCTIONS) == 0) {
 		/* Posix.2 says special builtins are found before functions.  We
@@ -4645,7 +4649,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		a special builtin. */
 
 		if (posixly_correct) {
-
 			builtin = find_special_builtin (words->word->word);
 			if (builtin)
 				builtin_is_special = 1;
@@ -4655,9 +4658,8 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			func = find_function (words->word->word);
 	}
 
-	/* In POSIX mode, assignment errors in the temporary environment cause a
-	non-interactive shell to exit. */
-
+	/* In POSIX mode, assignment errors in the temporary environment cause a 
+	 * non-interactive shell to exit. */
 #if 1
 	if (posixly_correct && builtin_is_special && interactive_shell == 0 && tempenv_assign_error) {
 #else
@@ -4668,6 +4670,8 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		jump_to_top_level (ERREXIT);
 	}
 
+
+
 	tempenv_assign_error = 0;	/* don't care about this any more */
 
 	/* This is where we handle the command builtin as a pseudo-reserved word
@@ -4676,13 +4680,13 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	old_command_builtin = -1;
 
 	if (builtin == 0 && func == 0) {
+
 		WORD_LIST *disposer, *l;
 		int cmdtype;
 
 		builtin = find_shell_builtin (words->word->word);
 
 		while (builtin == command_builtin) {
-			
 			disposer = words;
 			cmdtype = 0;
 			words = check_command_builtin (words, &cmdtype);
@@ -4704,7 +4708,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		}
 
 		if (cmdflags & CMD_COMMAND_BUILTIN) {
-
 			old_command_builtin = executing_command_builtin;
 			unwind_protect_int (executing_command_builtin);
 			executing_command_builtin |= 1;
@@ -4713,9 +4716,11 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		builtin = 0;
 	}
 
+
 	add_unwind_protect (dispose_words, words);
 
 	QUIT;
+
 
 	/* Bind the last word in this command to "$_" after execution. */
 	lastarg = (char *)NULL;
@@ -4726,8 +4731,8 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 
 
 #if defined (JOB_CONTROL)
-	/* Is this command a job control related thing? */
 
+	/* Is this command a job control related thing? */
 	if (words->word->word[0] == '%' && already_forked == 0) {
 
 		this_command_name = async ? "bg" : "fg";
@@ -4737,6 +4742,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 
 		goto return_result;
 	}
+
 
 	/* One other possibililty.  The user may want to resume an existing job.
 	If they do, find out whether this word is a candidate for a running
@@ -4769,24 +4775,25 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		job = get_job_by_name (words->word->word, jflags);
 
 		if (job != NO_JOB) {
-
 			run_unwind_frame ("simple-command");
 			this_command_name = "fg";
 			last_shell_builtin = this_shell_builtin;
 			this_shell_builtin = builtin_address ("fg");
-
 			started_status = start_job (job, 1);
+
 			return ((started_status < 0) ? EXECUTION_FAILURE : started_status);
 		}
 	}
-
 #endif /* JOB_CONTROL */
 
+
 run_builtin:
+
 	/* Remember the name of this command globally. */
 	this_command_name = words->word->word;
 
 	QUIT;
+
 
 	/* This command could be a shell builtin or a user-defined function.
 	We have already found special builtins by this time, so we do not
@@ -4800,15 +4807,14 @@ run_builtin:
 	last_shell_builtin = this_shell_builtin;
 	this_shell_builtin = builtin;
 
+
 	if (builtin || func) {
 
 		if (builtin) {
-
 			old_builtin = executing_builtin;
 			unwind_protect_int (executing_builtin);	/* modified in execute_builtin */
 
 			if (old_command_builtin == -1) {	/* sentinel, can be set above */
-
 				old_command_builtin = executing_command_builtin;
 				unwind_protect_int (executing_command_builtin);	/* ditto and set above */
 			}
@@ -4824,7 +4830,6 @@ run_builtin:
 			subshell_environment |= SUBSHELL_RESETTRAP;
 
 			if (async) {
-
 				if ((cmdflags & CMD_STDIN_REDIR) &&
 					pipe_in == NO_PIPE &&
 					(stdin_redirects (simple_command->redirects) == 0))
@@ -4834,7 +4839,7 @@ run_builtin:
 				setup_async_signals ();
 			}
 
-			if (async == 0)
+			else if (async == 0)
 				subshell_level++;
 
 			execute_subshell_builtin_or_function(words, 
@@ -4843,16 +4848,12 @@ run_builtin:
 
 			subshell_level--;
 		}
-
 		else {
 			result = execute_builtin_or_function(
 					words, builtin, func, simple_command->redirects, fds_to_close,cmdflags);
 
-
 			if (builtin) {
-
 				if (result > EX_SHERRBASE) {
-					
 					switch (result){
 					case EX_REDIRFAIL:
 					case EX_BADASSIGN:
@@ -4878,7 +4879,7 @@ run_builtin:
 					result = builtin_status (result);
 
 					if (builtin_is_special)
-					special_builtin_failed = 1;	/* XXX - take command builtin into account? */
+						special_builtin_failed = 1;	/* XXX - take command builtin into account? */
 				}
 
 				/* In POSIX mode, if there are assignment statements preceding
@@ -4888,6 +4889,7 @@ run_builtin:
 				if (posixly_correct && builtin_is_special && temporary_env)
 					merge_temporary_env ();
 			}
+
 			else {
 				/* function */
 				if (result == EX_USAGE)
@@ -4902,6 +4904,7 @@ run_builtin:
 		}
 	}
 
+
 	if (autocd && interactive && words->word && is_dirname (words->word->word)) {
 		words = make_word_list (make_word ("--"), words);
 		words = make_word_list (make_word ("cd"), words);
@@ -4912,23 +4915,26 @@ run_builtin:
 
 
   execute_from_filesystem:
-
 	if (command_line == 0)
 			command_line = savestring (the_printed_command_except_trap ? 
 					the_printed_command_except_trap : "");
+
 
 #if defined (PROCESS_SUBSTITUTION)
 	/* The old code did not test already_forked and only did this if
 	subshell_environment&SUBSHELL_COMSUB != 0 (comsubs and procsubs). Other
 	uses of the no-fork optimization left FIFOs in $TMPDIR */
 
-	if (already_forked == 0 && (cmdflags & CMD_NO_FORK) && fifos_pending() > 0)
+	if (already_forked == 0 && 
+		(cmdflags & CMD_NO_FORK) && fifos_pending() > 0)
+
 		cmdflags &= ~CMD_NO_FORK;
 #endif
 
 	result = execute_disk_command (words, simple_command->redirects, command_line,
 			pipe_in, pipe_out, async, fds_to_close,
 			cmdflags);
+
 
   return_result:
 	bind_lastarg (lastarg);
@@ -4942,9 +4948,10 @@ run_builtin:
 
 	discard_unwind_frame ("simple-command");
 	this_command_name = (char *)NULL;	/* points to freed memory now */
-	return (result);
 
+	return (result);
 }
+
 
 /* Translate the special builtin exit statuses.  We don't really need a
    function for this; it's a placeholder for future work. */

@@ -4464,7 +4464,6 @@ static int calc_optimize_flags(words, cmdflags)
 WORD_LIST **words;
 int cmdflags;
 {
-	int cmdflags_tmp = cmdflags;
 	int cmdtype;
 
 	WORD_LIST *disposer, *l;
@@ -4472,7 +4471,6 @@ int cmdflags;
 	while (find_shell_builtin ((*words)->word->word) == command_builtin) {
 		disposer = *words;
 		cmdtype = 0;
-
 		*words = check_command_builtin (*words, &cmdtype);
 
 		if (cmdtype > 0) {	
@@ -4482,18 +4480,17 @@ int cmdflags;
 
 			l->next = 0;
 			dispose_words (disposer);
-			cmdflags_tmp |= CMD_COMMAND_BUILTIN | CMD_NO_FUNCTIONS;
+			cmdflags |= CMD_COMMAND_BUILTIN | CMD_NO_FUNCTIONS;
 
 			if (cmdtype == 2)
-				cmdflags_tmp |= CMD_STDPATH;
+				cmdflags |= CMD_STDPATH;
 		}
 		else 
 			break;
 	}
 
-	return cmdflags_tmp;
+	return cmdflags;
 }
-
 
 
 /* The meaty part of all the executions.  We have to start hacking the
@@ -4507,7 +4504,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 {
 
 	WORD_LIST *words, *lastword;
-	char *command_line, *lastarg, *temp;
+	char *command_line, *lastarg;
 	int first_word_quoted, result, builtin_is_special, already_forked, cmdflags;
 	pid_t old_last_async_pid;
 	sh_builtin_func_t *builtin;
@@ -4716,6 +4713,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			unwind_protect_int (executing_command_builtin);
 			executing_command_builtin |= 1;
 		}        
+
 	}
 
 	add_unwind_protect (dispose_words, words);
@@ -4723,15 +4721,16 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	QUIT;
 
 	/* Bind the last word in this command to "$_" after execution. */
-	lastarg = (char *)NULL;
 
 	for (lastword = words; lastword->next; lastword = lastword->next);
 	lastarg = lastword->word->word;
 
+
 #if defined (JOB_CONTROL)
 
 	/* Is this command a job control related thing? */
-	if (words->word->word[0] == '%' && already_forked == 0) {
+	if (words->word->word[0] == '%' && 
+		already_forked == 0) {
 
 		this_command_name = async ? "bg" : "fg";
 		last_shell_builtin = this_shell_builtin;
@@ -4741,10 +4740,10 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		goto return_result;
 	}
 
-
 	/* One other possibililty.  The user may want to resume an existing job.
 	If they do, find out whether this word is a candidate for a running
 	job. */
+
 
 	if (job_control && 
 		already_forked == 0 && 
@@ -4754,38 +4753,37 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 		words->word->word[0] &&
 		!simple_command->redirects &&
 		pipe_in == NO_PIPE &&
-		pipe_out == NO_PIPE &&
-		(temp = get_string_value ("auto_resume"))) {
+		pipe_out == NO_PIPE) {
 
-		int job, jflags, started_status;
+		char *temp = get_string_value ("auto_resume");
+		if (temp) {
+			int jflags = JM_STOPPED|JM_FIRSTMATCH;
 
-		jflags = JM_STOPPED|JM_FIRSTMATCH;
+			if (STREQ (temp, "exact"))
+				jflags |= JM_EXACT;
+			else if (STREQ (temp, "substring"))
+				jflags |= JM_SUBSTRING;
+			else
+				jflags |= JM_PREFIX;
 
-		if (STREQ (temp, "exact"))
-			jflags |= JM_EXACT;
+			int job = get_job_by_name (words->word->word, jflags);
 
-		else if (STREQ (temp, "substring"))
-			jflags |= JM_SUBSTRING;
+			if (job != NO_JOB) {
+				run_unwind_frame ("simple-command");
+				this_command_name = "fg";
+				last_shell_builtin = this_shell_builtin;
+				this_shell_builtin = builtin_address ("fg");
+				int started_status = start_job (job, 1);
 
-		else
-			jflags |= JM_PREFIX;
-
-		job = get_job_by_name (words->word->word, jflags);
-
-		if (job != NO_JOB) {
-			run_unwind_frame ("simple-command");
-			this_command_name = "fg";
-			last_shell_builtin = this_shell_builtin;
-			this_shell_builtin = builtin_address ("fg");
-			started_status = start_job (job, 1);
-
-			return ((started_status < 0) ? EXECUTION_FAILURE : started_status);
+				return ((started_status < 0) ? EXECUTION_FAILURE : started_status);
+			}
 		}
 	}
+
 #endif /* JOB_CONTROL */
 
 
-run_builtin:
+  run_builtin:
 
 	/* Remember the name of this command globally. */
 	this_command_name = words->word->word;
@@ -4853,7 +4851,7 @@ run_builtin:
 			if (builtin) {
 
 				if (result > EX_SHERRBASE) {
-					switch (result){
+					switch (result) {
 					case EX_REDIRFAIL:
 					case EX_BADASSIGN:
 					case EX_EXPFAIL:
@@ -4914,6 +4912,7 @@ run_builtin:
 
 
   execute_from_filesystem:
+
 	if (command_line == 0)
 			command_line = savestring (the_printed_command_except_trap ? 
 					the_printed_command_except_trap : "");

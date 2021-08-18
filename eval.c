@@ -107,13 +107,10 @@ static void handle_bashjmp(int code, int our_indirection_level)
 	}
 }
 
-
 /* Read and execute commands until EOF is reached.  This assumes that
    the input source has already been initialized. */
-int
-reader_loop ()
+int reader_loop ()
 {
-
 	int our_indirection_level;
 	COMMAND * volatile current_command;
 
@@ -145,7 +142,6 @@ reader_loop ()
 			/* Attempt to reclaim memory allocated with alloca (). */
 			(void) alloca (0);
 #endif
-
 			int retval = read_command();
 
 			/*Parse error*/
@@ -181,8 +177,10 @@ reader_loop ()
 			handle_bashjmp(code, our_indirection_level);
 		} 
 
+
   exec_done:
 		QUIT;
+
 		if (current_command) {
 			dispose_command (current_command);
 			current_command = (COMMAND *)NULL;
@@ -291,33 +289,35 @@ execute_array_command (a, v)
 }
 #endif
   
-static void
-execute_prompt_command ()
+
+static void execute_prompt_command ()
 {
-  char *command_to_execute;
-  SHELL_VAR *pcv;
+	char *command_to_execute;
+	SHELL_VAR *pcv;
 #if defined (ARRAY_VARS)
-  ARRAY *pcmds;
+	ARRAY *pcmds;
 #endif
 
-  pcv = find_variable ("PROMPT_COMMAND");
-  if (pcv  == 0 || var_isset (pcv) == 0 || invisible_p (pcv))
-    return;
-#if defined (ARRAY_VARS)
-  if (array_p (pcv))
-    {
-      if ((pcmds = array_cell (pcv)) && array_num_elements (pcmds) > 0)
-  execute_array_command (pcmds, "PROMPT_COMMAND");
-      return;
-    }
-  else if (assoc_p (pcv))
-    return;  /* currently don't allow associative arrays here */
-#endif
+	pcv = find_variable ("PROMPT_COMMAND");
 
-  command_to_execute = value_cell (pcv);
-  if (command_to_execute && *command_to_execute)
-    execute_variable_command (command_to_execute, "PROMPT_COMMAND");
+	if (pcv  == 0 || var_isset (pcv) == 0 || invisible_p (pcv))
+		return;
+#if defined (ARRAY_VARS)
+	if (array_p (pcv)) {
+
+		if ((pcmds = array_cell (pcv)) && array_num_elements (pcmds) > 0)
+			execute_array_command (pcmds, "PROMPT_COMMAND");
+
+		return;
+	}
+	else if (assoc_p (pcv))
+		return;  /* currently don't allow associative arrays here */
+#endif
+	command_to_execute = value_cell (pcv);
+	if (command_to_execute && *command_to_execute)
+		execute_variable_command (command_to_execute, "PROMPT_COMMAND");
 }
+
 
 /* Call the YACC-generated parser and return the status of the parse.
    Input is read from the current input stream (bash_input).  yyparse
@@ -359,47 +359,42 @@ int parse_command ()
 
 static int get_tmout_len(void)
 {
-  SHELL_VAR *tmout_var;
-  tmout_var = find_variable("TMOUT");
-  if (tmout_var && var_isset(tmout_var))
-    return atoi(value_cell (tmout_var));
-  return 0;
-}
+	SHELL_VAR *tmout_var = find_variable("TMOUT");
+	if (tmout_var && var_isset(tmout_var))
+		return atoi(value_cell (tmout_var));
+	return 0;
 
+}
 
 /* Read and parse a command, returning the status of the parse.  The command
    is left in the globval variable GLOBAL_COMMAND for use by reader_loop.
    This is where the shell timeout code is executed. */
-int
-read_command ()
+int read_command ()
 {
-  SigHandler *old_alrm;
-  int tmout_len, result;
+	SigHandler *old_alrm;
+	int tmout_len, result;
 
-  set_current_prompt_level (1);
-  global_command = (COMMAND *)NULL;
+	set_current_prompt_level (1);
+	global_command = (COMMAND *)NULL;
 
-  /* Only do timeouts if interactive. */
-  tmout_len = 0;
-  old_alrm = (SigHandler *)NULL;
+	/* Only do timeouts if interactive. */
+	tmout_len = 0;
+	old_alrm = (SigHandler *)NULL;
 
+	if (interactive && (tmout_len = get_tmout_len()) > 0) {
+		 old_alrm = set_signal_handler(SIGALRM, alrm_catcher);
+		 alarm(tmout_len);
+	}
 
-  if (interactive && (tmout_len = get_tmout_len()) > 0) 
-    {
-     old_alrm = set_signal_handler(SIGALRM, alrm_catcher);
-     alarm(tmout_len);
-    }
+	QUIT;
 
-  QUIT;
+	current_command_line_count = 0;
+	result = parse_command ();
 
-  current_command_line_count = 0;
-  result = parse_command ();
+	if (interactive && (tmout_len > 0)) {
+		alarm(0);
+		set_signal_handler (SIGALRM, old_alrm);
+	}
 
-  if (interactive && (tmout_len > 0))
-    {
-      alarm(0);
-      set_signal_handler (SIGALRM, old_alrm);
-    }
-
-  return (result);
+	return (result);
 }

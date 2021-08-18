@@ -195,10 +195,26 @@ static int execute_connection PARAMS((COMMAND *, int, int, int, struct fd_bitmap
 static int execute_intern_function PARAMS((WORD_DESC *, FUNCTION_DEF *));
 
 
+/************************************************************************************************/
 /*my functinos*/
+
+
 //static int execute_subshell_command (command, asynchronous, pipe_in, pipe_out, fds_to_close, save_line_number);
+
 //static int handle_redirections();
-//static int have_to_fork();
+
+/*my functions, thease function called by execute_simple_command()*/
+
+//static int have_to_fork (simple_command, pipe_in, pipe_out, async);
+
+//static WORD_LIST *expand_command_words(simple_command, cmdflags, fds_to_close);
+
+//static int execute_nothing(simple_command, pipe_in, pipe_out, async, already_forked);
+
+//static int calc_optimize_flags(words, cmdflags);
+
+/************************************************************************************************/
+
 
 /* Set to 1 if fd 0 was the subject of redirection to a subshell.  Global
    so that reader_loop can set it to zero before executing a command. */
@@ -4410,9 +4426,9 @@ static int have_to_fork (simple_command, pipe_in, pipe_out, async)
 
 /*XXX this return expanded command arguments?*/
 static WORD_LIST *expand_command_words(simple_command, cmdflags, fds_to_close)
-     SIMPLE_COM *simple_command;
-     int cmdflags;
-     struct fd_bitmap *fds_to_close;
+	SIMPLE_COM *simple_command;
+	int cmdflags;
+	struct fd_bitmap *fds_to_close;
 {
 	WORD_LIST *words;
 
@@ -4461,7 +4477,7 @@ static int execute_nothing(simple_command, pipe_in, pipe_out, async, already_for
 
 
 static int calc_optimize_flags(words, cmdflags)
-WORD_LIST **words;
+	WORD_LIST **words;
 int cmdflags;
 {
 	int cmdtype;
@@ -4565,6 +4581,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	last_command_subst_pid = NO_PID;
 	old_last_async_pid = last_asynchronous_pid;
 	already_forked = 0;
+
 
 	/*background or pipeline*/
 	if (have_to_fork (simple_command, pipe_in, pipe_out, async)) {
@@ -4685,6 +4702,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			func = find_function (words->word->word);
 	}
 
+
 	/* In POSIX mode, assignment errors in the temporary environment cause a 
 	 * non-interactive shell to exit. */
 #if 1
@@ -4713,7 +4731,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 			unwind_protect_int (executing_command_builtin);
 			executing_command_builtin |= 1;
 		}        
-
 	}
 
 	add_unwind_protect (dispose_words, words);
@@ -4739,6 +4756,7 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 
 		goto return_result;
 	}
+
 
 	/* One other possibililty.  The user may want to resume an existing job.
 	If they do, find out whether this word is a candidate for a running
@@ -4932,7 +4950,6 @@ static int execute_simple_command (simple_command, pipe_in, pipe_out, async, fds
 	result = execute_disk_command (words, simple_command->redirects, command_line,
 			pipe_in, pipe_out, async, fds_to_close,
 			cmdflags);
-
 
   return_result:
 	bind_lastarg (lastarg);
